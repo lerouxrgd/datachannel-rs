@@ -1,0 +1,8 @@
+[package]
+name = "datachannel"
+version = "0.1.0"
+authors = ["Romain Leroux <romain@leroux.dev>"]
+edition = "2018"
+
+[dependencies]
+datachannel-sys = { path = "datachannel-sys", version = "0.1.0" }
