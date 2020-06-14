@@ -1,5 +1,4 @@
 use std::ffi::{c_void, CStr, CString};
-use std::mem;
 use std::os::raw::c_char;
 
 use datachannel_sys as sys;
@@ -59,10 +58,9 @@ pub trait PeerConnection {
     fn on_candidate(&mut self, cand: &str, mid: &str) {}
     fn on_state_change(&mut self, state: ConnState) {}
     fn on_gathering_state_change(&mut self, state: GatheringConnState) {}
-    fn on_data_channel(&mut self, data_channel: RtcDataChannel<Self::DC>) {}
+    fn on_data_channel(&mut self, data_channel: Box<RtcDataChannel<Self::DC>>) {}
 }
 
-#[repr(C)]
 pub struct RtcPeerConnection<P, D> {
     id: i32,
     pc: P,
@@ -71,43 +69,37 @@ pub struct RtcPeerConnection<P, D> {
 
 impl<P, D> RtcPeerConnection<P, D>
 where
-    P: PeerConnection,
-    P::DC: DataChannel,
-    D: MakeDataChannel<P::DC>,
+    P: PeerConnection + Send,
+    P::DC: DataChannel + Send,
+    D: MakeDataChannel<P::DC> + Send,
 {
-    pub fn new(config: &Config, pc: P, dc: D) -> Self {
+    pub fn new(config: &Config, pc: P, dc: D) -> Box<Self> {
         unsafe {
-            let rtc_pc = RtcPeerConnection {
-                id: sys::rtcCreatePeerConnection(&config.as_raw()),
-                pc,
-                dc,
-            };
-            sys::rtcSetUserPointer(rtc_pc.id, &rtc_pc as *const _ as *mut c_void);
+            let id = sys::rtcCreatePeerConnection(&config.as_raw());
+            let mut rtc_pc = Box::new(RtcPeerConnection { id, pc, dc });
+            let ptr = &mut *rtc_pc;
+
+            sys::rtcSetUserPointer(id, std::ptr::null_mut());
+            sys::rtcSetUserPointer(id, ptr as *mut _ as *mut c_void);
 
             sys::rtcSetLocalDescriptionCallback(
-                rtc_pc.id,
+                id,
                 Some(RtcPeerConnection::<P, D>::local_description_cb),
             );
 
             sys::rtcSetLocalCandidateCallback(
-                rtc_pc.id,
+                id,
                 Some(RtcPeerConnection::<P, D>::local_candidate_cb),
             );
 
-            sys::rtcSetStateChangeCallback(
-                rtc_pc.id,
-                Some(RtcPeerConnection::<P, D>::state_change_cb),
-            );
+            sys::rtcSetStateChangeCallback(id, Some(RtcPeerConnection::<P, D>::state_change_cb));
 
             sys::rtcSetGatheringStateChangeCallback(
-                rtc_pc.id,
+                id,
                 Some(RtcPeerConnection::<P, D>::gathering_state_cb),
             );
 
-            sys::rtcSetDataChannelCallback(
-                rtc_pc.id,
-                Some(RtcPeerConnection::<P, D>::data_channel_cb),
-            );
+            sys::rtcSetDataChannelCallback(id, Some(RtcPeerConnection::<P, D>::data_channel_cb));
 
             rtc_pc
         }
@@ -118,7 +110,7 @@ where
         sdp_type: *const c_char,
         ptr: *mut c_void,
     ) {
-        let rtc_pc: &mut RtcPeerConnection<P, D> = mem::transmute(ptr);
+        let rtc_pc = &mut *(ptr as *mut RtcPeerConnection<P, D>);
         let sdp = CStr::from_ptr(sdp).to_str().unwrap();
         let sdp_type = CStr::from_ptr(sdp_type).to_str().unwrap();
         rtc_pc.pc.on_description(sdp, sdp_type)
@@ -129,33 +121,33 @@ where
         mid: *const c_char,
         ptr: *mut c_void,
     ) {
-        let rtc_pc: &mut RtcPeerConnection<P, D> = mem::transmute(ptr);
+        let rtc_pc = &mut *(ptr as *mut RtcPeerConnection<P, D>);
         let cand = CStr::from_ptr(cand).to_str().unwrap();
         let mid = CStr::from_ptr(mid).to_str().unwrap();
         rtc_pc.pc.on_candidate(cand, mid)
     }
 
     unsafe extern "C" fn state_change_cb(state: sys::rtcState, ptr: *mut c_void) {
-        let rtc_pc: &mut RtcPeerConnection<P, D> = mem::transmute(ptr);
+        let rtc_pc = &mut *(ptr as *mut RtcPeerConnection<P, D>);
         let state = ConnState::from_raw(state);
         rtc_pc.pc.on_state_change(state)
     }
 
     unsafe extern "C" fn gathering_state_cb(state: sys::rtcState, ptr: *mut c_void) {
-        let rtc_pc: &mut RtcPeerConnection<P, D> = mem::transmute(ptr);
+        let rtc_pc = &mut *(ptr as *mut RtcPeerConnection<P, D>);
         let state = GatheringConnState::from_raw(state);
         rtc_pc.pc.on_gathering_state_change(state)
     }
 
     unsafe extern "C" fn data_channel_cb(dc: i32, ptr: *mut c_void) {
-        let rtc_pc: &mut RtcPeerConnection<P, D> = mem::transmute(ptr);
+        let rtc_pc = &mut *(ptr as *mut RtcPeerConnection<P, D>);
         let dc = RtcDataChannel::new(dc, rtc_pc.dc.make());
         rtc_pc.pc.on_data_channel(dc)
     }
 
-    pub fn create_data_channel<C>(&mut self, label: &str, handler: C) -> RtcDataChannel<C>
+    pub fn create_data_channel<C>(&mut self, label: &str, handler: C) -> Box<RtcDataChannel<C>>
     where
-        C: DataChannel,
+        C: DataChannel + Send,
     {
         let label = CString::new(label).unwrap();
         let dc = unsafe { sys::rtcCreateDataChannel(self.id, label.as_ptr()) };

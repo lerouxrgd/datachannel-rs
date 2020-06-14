@@ -6,3 +6,6 @@ edition = "2018"
 
 [dependencies]
 datachannel-sys = { path = "datachannel-sys", version = "0.1.0" }
+
+[dev-dependencies]
+crossbeam-channel = "0.4"

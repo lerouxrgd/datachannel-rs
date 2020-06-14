@@ -1,82 +1,96 @@
-use datachannel_sys as sys;
-
 mod config;
 mod datachannel;
 mod peerconnection;
 
-use crate::config::Config;
-use crate::datachannel::{DataChannel, MakeDataChannel, RtcDataChannel};
-use crate::peerconnection::{ConnState, GatheringConnState, PeerConnection, RtcPeerConnection};
+pub use crate::config::Config;
+pub use crate::datachannel::{DataChannel, MakeDataChannel, RtcDataChannel};
+pub use crate::peerconnection::{ConnState, GatheringConnState, PeerConnection, RtcPeerConnection};
 
-pub fn wip() {
-    use std::ptr;
-    use std::sync::mpsc::{sync_channel, SyncSender};
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    unsafe { sys::rtcInitLogger(5u32) };
+    use crossbeam_channel::{select, unbounded, Sender};
+    use std::thread;
 
-    struct Chan(usize);
+    enum PeerMsg {
+        RemoteDescription { sdp: String, sdp_type: String },
+        RemoteCandidate { cand: String, mid: String },
+    }
+
+    struct Chan {
+        id: usize,
+        ready: Option<Sender<()>>,
+    }
+
+    impl Chan {
+        fn new(id: usize) -> Self {
+            Chan { id, ready: None }
+        }
+
+        fn new_sync(id: usize, ready: Sender<()>) -> Self {
+            Chan {
+                id,
+                ready: Some(ready),
+            }
+        }
+    }
 
     impl DataChannel for Chan {
-        fn on_message(&mut self, msg: &[u8]) {
-            println!("Message {}: {}", self.0, String::from_utf8_lossy(msg));
+        fn on_open(&mut self) {
+            println!("DataChannel {}: Open", self.id);
+            if let Some(ready) = &self.ready {
+                ready.send(()).unwrap();
+            }
         }
-    };
+
+        fn on_message(&mut self, msg: &[u8]) {
+            println!("Message {}: {}", self.id, String::from_utf8_lossy(msg));
+        }
+    }
 
     impl MakeDataChannel<Chan> for Chan {
         fn make(&self) -> Chan {
-            Chan(self.0)
-        }
-    };
-
-    struct PeerPair {
-        id: usize,
-        other: *mut PeerPair,
-        conn: *mut RtcPeerConnection<PeerPair, Chan>,
-    }
-
-    impl PeerPair {
-        pub fn new() -> (PeerPair, PeerPair) {
-            let mut pc1 = PeerPair {
-                id: 1,
-                other: ptr::null_mut(),
-                conn: ptr::null_mut(),
-            };
-            let mut pc2 = PeerPair {
-                id: 2,
-                other: ptr::null_mut(),
-                conn: ptr::null_mut(),
-            };
-
-            pc2.other = &mut pc1 as *mut _;
-            pc1.other = &mut pc2 as *mut _;
-
-            (pc1, pc2)
-        }
-    }
-
-    impl Drop for PeerPair {
-        fn drop(&mut self) {
-            if !self.other.is_null() {
-                unsafe { (*self.other).other = ptr::null_mut() };
+            Chan {
+                id: self.id,
+                ready: None,
             }
         }
     }
 
-    impl PeerConnection for PeerPair {
+    struct LocalConn {
+        id: usize,
+        signaling: Sender<PeerMsg>,
+        dc: Option<Box<RtcDataChannel<Chan>>>,
+    }
+
+    impl LocalConn {
+        fn new(id: usize, signaling: Sender<PeerMsg>) -> Self {
+            LocalConn {
+                id,
+                signaling,
+                dc: None,
+            }
+        }
+    }
+
+    impl PeerConnection for LocalConn {
         type DC = Chan;
 
         fn on_description(&mut self, sdp: &str, sdp_type: &str) {
-            if !self.other.is_null() {
-                println!("Description {}: {} {}", self.id, sdp, sdp_type);
-                unsafe { (*(*self.other).conn).set_remote_description(sdp, sdp_type) };
-            }
+            let (sdp, sdp_type) = (sdp.to_string(), sdp_type.to_string());
+            println!("Description {}: {}\n{}", self.id, &sdp_type, &sdp);
+            self.signaling
+                .send(PeerMsg::RemoteDescription { sdp, sdp_type })
+                .unwrap();
         }
 
         fn on_candidate(&mut self, cand: &str, mid: &str) {
-            if !self.other.is_null() {
-                println!("Candidate {}: {} {}", self.id, cand, mid);
-                unsafe { (*(*self.other).conn).add_remote_candidate(cand, mid) };
-            }
+            let (cand, mid) = (cand.to_string(), mid.to_string());
+            println!("Candidate {}: {} {}", self.id, &cand, &mid);
+            self.signaling
+                .send(PeerMsg::RemoteCandidate { cand, mid })
+                .unwrap();
         }
 
         fn on_state_change(&mut self, state: ConnState) {
@@ -87,43 +101,68 @@ pub fn wip() {
             println!("Gathering state {}: {:?}", self.id, state);
         }
 
-        fn on_data_channel(&mut self, mut dc: RtcDataChannel<Chan>) {
+        fn on_data_channel(&mut self, mut dc: Box<RtcDataChannel<Chan>>) {
             println!(
                 "Datachannel {}: Received with label {}",
                 self.id,
                 dc.label()
             );
             dc.send(format!("Hello from {}", self.id).as_bytes());
+            self.dc.replace(dc);
         }
-    };
+    }
 
-    let (mut pp1, mut pp2) = PeerPair::new();
-    let pp1_conn = &mut pp1.conn as *mut _;
-    let pp2_conn = &mut pp2.conn as *mut _;
+    #[test]
+    fn test_connectivity() {
+        let id1 = 1;
+        let id2 = 2;
 
-    let conf = Config::default();
+        let (tx_peer1, rx_peer1) = unbounded();
+        let (tx_peer2, rx_peer2) = unbounded();
 
-    let mut rtc_pc1 = RtcPeerConnection::new(&conf, pp1, Chan(1));
-    let mut rtc_pc2 = RtcPeerConnection::new(&conf, pp2, Chan(2));
-    unsafe { *pp1_conn = &mut rtc_pc1 as *mut _ };
-    unsafe { *pp2_conn = &mut rtc_pc2 as *mut _ };
+        let conn1 = LocalConn::new(id1, tx_peer2);
+        let conn2 = LocalConn::new(id2, tx_peer1);
 
-    struct BlockingChan(usize, SyncSender<()>);
+        let conf = Config::default();
+        let mut pc1 = RtcPeerConnection::new(&conf, conn1, Chan::new(id1));
+        let mut pc2 = RtcPeerConnection::new(&conf, conn2, Chan::new(id2));
 
-    impl DataChannel for BlockingChan {
-        fn on_open(&mut self) {
-            self.1.send(()).unwrap();
-        }
+        unsafe { datachannel_sys::rtcInitLogger(5u32) };
 
-        fn on_message(&mut self, msg: &[u8]) {
-            println!("Message {}: {}", self.0, String::from_utf8_lossy(msg));
-        }
-    };
+        thread::spawn(move || {
+            while let Ok(msg) = rx_peer2.recv() {
+                match msg {
+                    PeerMsg::RemoteDescription { sdp, sdp_type } => {
+                        pc2.set_remote_description(&sdp, &sdp_type);
+                    }
+                    PeerMsg::RemoteCandidate { cand, mid } => {
+                        pc2.add_remote_candidate(&cand, &mid);
+                    }
+                }
+            }
+        });
 
-    let (tx, rx) = sync_channel(1);
-    let mut dc1 = rtc_pc1.create_data_channel("test", BlockingChan(1, tx));
-    // let mut dc1 = rtc_pc1.create_data_channel("test", Chan(1));
-    rx.recv().unwrap();
-    // std::thread::sleep(std::time::Duration::from_secs(2));
-    dc1.send(b"Hello from 1");
+        thread::spawn(move || {
+            let (tx_ready, rx_ready) = unbounded();
+            let mut dc = pc1.create_data_channel("test", Chan::new_sync(id1, tx_ready));
+
+            loop {
+                select! {
+                    recv(rx_ready) -> _ => dc.send(format!("Hello from {}", id1).as_bytes()),
+                    recv(rx_peer1) -> msg => {
+                        match msg.unwrap() {
+                            PeerMsg::RemoteDescription { sdp, sdp_type } => {
+                                pc1.set_remote_description(&sdp, &sdp_type);
+                            }
+                            PeerMsg::RemoteCandidate { cand, mid } => {
+                                pc1.add_remote_candidate(&cand, &mid);
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        thread::sleep(std::time::Duration::from_secs(120));
+    }
 }
