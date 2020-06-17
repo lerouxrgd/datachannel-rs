@@ -43,7 +43,6 @@ where
             let mut rtc_dc = Box::new(RtcDataChannel { id, dc });
             let ptr = &mut *rtc_dc;
 
-            sys::rtcSetUserPointer(id, std::ptr::null_mut());
             sys::rtcSetUserPointer(id, ptr as *mut _ as *mut c_void);
 
             sys::rtcSetOpenCallback(id, Some(RtcDataChannel::<D>::open_cb));

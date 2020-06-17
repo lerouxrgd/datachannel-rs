@@ -74,12 +74,13 @@ where
     D: MakeDataChannel<P::DC> + Send,
 {
     pub fn new(config: &Config, pc: P, dc: D) -> Box<Self> {
+        *crate::logs::INIT_LOGGING;
+
         unsafe {
             let id = sys::rtcCreatePeerConnection(&config.as_raw());
             let mut rtc_pc = Box::new(RtcPeerConnection { id, pc, dc });
             let ptr = &mut *rtc_pc;
 
-            sys::rtcSetUserPointer(id, std::ptr::null_mut());
             sys::rtcSetUserPointer(id, ptr as *mut _ as *mut c_void);
 
             sys::rtcSetLocalDescriptionCallback(

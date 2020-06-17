@@ -1,5 +1,6 @@
 mod config;
 mod datachannel;
+mod logs;
 mod peerconnection;
 
 pub use crate::config::Config;
@@ -10,8 +11,10 @@ pub use crate::peerconnection::{ConnState, GatheringConnState, PeerConnection, R
 mod tests {
     use super::*;
 
-    use crossbeam_channel::{select, unbounded, Sender};
+    use std::env;
     use std::thread;
+
+    use crossbeam_channel::{select, unbounded, Sender};
 
     enum PeerMsg {
         RemoteDescription { sdp: String, sdp_type: String },
@@ -114,6 +117,9 @@ mod tests {
 
     #[test]
     fn test_connectivity() {
+        env::set_var("RUST_LOG", "info");
+        env_logger::init();
+
         let id1 = 1;
         let id2 = 2;
 
@@ -126,8 +132,6 @@ mod tests {
         let conf = Config::default();
         let mut pc1 = RtcPeerConnection::new(&conf, conn1, Chan::new(id1));
         let mut pc2 = RtcPeerConnection::new(&conf, conn2, Chan::new(id2));
-
-        unsafe { datachannel_sys::rtcInitLogger(5u32) };
 
         thread::spawn(move || {
             while let Ok(msg) = rx_peer2.recv() {
