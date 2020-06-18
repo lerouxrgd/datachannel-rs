@@ -7,44 +7,42 @@ use crate::config::Config;
 use crate::datachannel::{DataChannel, MakeDataChannel, RtcDataChannel};
 
 #[derive(Debug, PartialEq)]
-#[repr(u32)]
 pub enum ConnState {
-    New = 0,
-    Connecting = 1,
-    Connected = 2,
-    Disconnected = 3,
-    Failed = 4,
-    Closed = 5,
+    New,
+    Connecting,
+    Connected,
+    Disconnected,
+    Failed,
+    Closed,
 }
 
 impl ConnState {
     fn from_raw(state: sys::rtcState) -> Self {
         match state {
-            0 => Self::New,
-            1 => Self::Connecting,
-            2 => Self::Connected,
-            3 => Self::Disconnected,
-            4 => Self::Failed,
-            5 => Self::Closed,
+            sys::rtcState_RTC_NEW => Self::New,
+            sys::rtcState_RTC_CONNECTING => Self::Connecting,
+            sys::rtcState_RTC_CONNECTED => Self::Connected,
+            sys::rtcState_RTC_DISCONNECTED => Self::Disconnected,
+            sys::rtcState_RTC_FAILED => Self::Failed,
+            sys::rtcState_RTC_CLOSED => Self::Closed,
             _ => panic!("Unknown rtcState: {}", state),
         }
     }
 }
 
 #[derive(Debug, PartialEq)]
-#[repr(u32)]
-pub enum GatheringConnState {
-    New = 0,
-    InProgress = 1,
-    Complete = 2,
+pub enum GatheringState {
+    New,
+    InProgress,
+    Complete,
 }
 
-impl GatheringConnState {
-    fn from_raw(state: sys::rtcState) -> Self {
+impl GatheringState {
+    fn from_raw(state: sys::rtcGatheringState) -> Self {
         match state {
-            0 => Self::New,
-            1 => Self::InProgress,
-            2 => Self::Complete,
+            sys::rtcGatheringState_RTC_GATHERING_NEW => Self::New,
+            sys::rtcGatheringState_RTC_GATHERING_INPROGRESS => Self::InProgress,
+            sys::rtcGatheringState_RTC_GATHERING_COMPLETE => Self::Complete,
             _ => panic!("Unknown rtcGatheringState: {}", state),
         }
     }
@@ -56,8 +54,8 @@ pub trait PeerConnection {
 
     fn on_description(&mut self, sdp: &str, sdp_type: &str) {}
     fn on_candidate(&mut self, cand: &str, mid: &str) {}
-    fn on_state_change(&mut self, state: ConnState) {}
-    fn on_gathering_state_change(&mut self, state: GatheringConnState) {}
+    fn on_conn_state_change(&mut self, state: ConnState) {}
+    fn on_gathering_state_change(&mut self, state: GatheringState) {}
     fn on_data_channel(&mut self, data_channel: Box<RtcDataChannel<Self::DC>>) {}
 }
 
@@ -74,7 +72,7 @@ where
     D: MakeDataChannel<P::DC> + Send,
 {
     pub fn new(config: &Config, pc: P, dc: D) -> Box<Self> {
-        *crate::logs::INIT_LOGGING;
+        crate::ensure_logging();
 
         unsafe {
             let id = sys::rtcCreatePeerConnection(&config.as_raw());
@@ -131,12 +129,12 @@ where
     unsafe extern "C" fn state_change_cb(state: sys::rtcState, ptr: *mut c_void) {
         let rtc_pc = &mut *(ptr as *mut RtcPeerConnection<P, D>);
         let state = ConnState::from_raw(state);
-        rtc_pc.pc.on_state_change(state)
+        rtc_pc.pc.on_conn_state_change(state)
     }
 
     unsafe extern "C" fn gathering_state_cb(state: sys::rtcState, ptr: *mut c_void) {
         let rtc_pc = &mut *(ptr as *mut RtcPeerConnection<P, D>);
-        let state = GatheringConnState::from_raw(state);
+        let state = GatheringState::from_raw(state);
         rtc_pc.pc.on_gathering_state_change(state)
     }
 

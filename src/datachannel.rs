@@ -84,8 +84,10 @@ where
         unsafe {
             let mut buf: Vec<u8> = vec![0; 512];
             sys::rtcGetDataChannelLabel(self.id, buf.as_mut_ptr() as *mut c_char, 512 as i32);
-            buf.shrink_to_fit();
-            String::from_utf8(buf).unwrap()
+            String::from_utf8(buf)
+                .unwrap()
+                .trim_matches(char::from(0))
+                .to_string()
         }
     }
 
