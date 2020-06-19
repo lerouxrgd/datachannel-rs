@@ -5,6 +5,7 @@ use datachannel_sys as sys;
 
 use crate::config::Config;
 use crate::datachannel::{DataChannel, MakeDataChannel, RtcDataChannel};
+use crate::error::{check, Error, Result};
 
 #[derive(Debug, PartialEq)]
 pub enum ConnState {
@@ -71,36 +72,42 @@ where
     P::DC: DataChannel + Send,
     D: MakeDataChannel<P::DC> + Send,
 {
-    pub fn new(config: &Config, pc: P, dc: D) -> Box<Self> {
+    pub fn new(config: &Config, pc: P, dc: D) -> Result<Box<Self>> {
         crate::ensure_logging();
 
         unsafe {
-            let id = sys::rtcCreatePeerConnection(&config.as_raw());
+            let id = check(sys::rtcCreatePeerConnection(&config.as_raw()))?;
             let mut rtc_pc = Box::new(RtcPeerConnection { id, pc, dc });
             let ptr = &mut *rtc_pc;
 
             sys::rtcSetUserPointer(id, ptr as *mut _ as *mut c_void);
 
-            sys::rtcSetLocalDescriptionCallback(
+            check(sys::rtcSetLocalDescriptionCallback(
                 id,
                 Some(RtcPeerConnection::<P, D>::local_description_cb),
-            );
+            ))?;
 
-            sys::rtcSetLocalCandidateCallback(
+            check(sys::rtcSetLocalCandidateCallback(
                 id,
                 Some(RtcPeerConnection::<P, D>::local_candidate_cb),
-            );
+            ))?;
 
-            sys::rtcSetStateChangeCallback(id, Some(RtcPeerConnection::<P, D>::state_change_cb));
+            check(sys::rtcSetStateChangeCallback(
+                id,
+                Some(RtcPeerConnection::<P, D>::state_change_cb),
+            ))?;
 
-            sys::rtcSetGatheringStateChangeCallback(
+            check(sys::rtcSetGatheringStateChangeCallback(
                 id,
                 Some(RtcPeerConnection::<P, D>::gathering_state_cb),
-            );
+            ))?;
 
-            sys::rtcSetDataChannelCallback(id, Some(RtcPeerConnection::<P, D>::data_channel_cb));
+            check(sys::rtcSetDataChannelCallback(
+                id,
+                Some(RtcPeerConnection::<P, D>::data_channel_cb),
+            ))?;
 
-            rtc_pc
+            Ok(rtc_pc)
         }
     }
 
@@ -110,9 +117,9 @@ where
         ptr: *mut c_void,
     ) {
         let rtc_pc = &mut *(ptr as *mut RtcPeerConnection<P, D>);
-        let sdp = CStr::from_ptr(sdp).to_str().unwrap();
-        let sdp_type = CStr::from_ptr(sdp_type).to_str().unwrap();
-        rtc_pc.pc.on_description(sdp, sdp_type)
+        let sdp = CStr::from_ptr(sdp).to_string_lossy();
+        let sdp_type = CStr::from_ptr(sdp_type).to_string_lossy();
+        rtc_pc.pc.on_description(&sdp, &sdp_type)
     }
 
     unsafe extern "C" fn local_candidate_cb(
@@ -121,9 +128,9 @@ where
         ptr: *mut c_void,
     ) {
         let rtc_pc = &mut *(ptr as *mut RtcPeerConnection<P, D>);
-        let cand = CStr::from_ptr(cand).to_str().unwrap();
-        let mid = CStr::from_ptr(mid).to_str().unwrap();
-        rtc_pc.pc.on_candidate(cand, mid)
+        let cand = CStr::from_ptr(cand).to_string_lossy();
+        let mid = CStr::from_ptr(mid).to_string_lossy();
+        rtc_pc.pc.on_candidate(&cand, &mid)
     }
 
     unsafe extern "C" fn state_change_cb(state: sys::rtcState, ptr: *mut c_void) {
@@ -140,34 +147,55 @@ where
 
     unsafe extern "C" fn data_channel_cb(dc: i32, ptr: *mut c_void) {
         let rtc_pc = &mut *(ptr as *mut RtcPeerConnection<P, D>);
-        let dc = RtcDataChannel::new(dc, rtc_pc.dc.make());
-        rtc_pc.pc.on_data_channel(dc)
+        match RtcDataChannel::new(dc, rtc_pc.dc.make()) {
+            Ok(dc) => rtc_pc.pc.on_data_channel(dc),
+            Err(err) => log::error!(
+                "Couldn't create RtcDataChannel with id={} from RtcPeerConnection {:p}: {}",
+                dc,
+                ptr,
+                err
+            ),
+        }
     }
 
-    pub fn create_data_channel<C>(&mut self, label: &str, handler: C) -> Box<RtcDataChannel<C>>
+    pub fn create_data_channel<C>(
+        &mut self,
+        label: &str,
+        handler: C,
+    ) -> Result<Box<RtcDataChannel<C>>>
     where
         C: DataChannel + Send,
     {
-        let label = CString::new(label).unwrap();
-        let dc = unsafe { sys::rtcCreateDataChannel(self.id, label.as_ptr()) };
+        let label = CString::new(label).map_err(|_| Error::InvalidArg)?;
+        let dc = check(unsafe { sys::rtcCreateDataChannel(self.id, label.as_ptr()) })?;
         RtcDataChannel::new(dc, handler)
     }
 
-    pub fn set_remote_description(&mut self, sdp: &str, sdp_type: &str) {
-        let sdp = CString::new(sdp).unwrap();
-        let sdp_type = CString::new(sdp_type).unwrap();
-        unsafe { sys::rtcSetRemoteDescription(self.id, sdp.as_ptr(), sdp_type.as_ptr()) };
+    pub fn set_remote_description(&mut self, sdp: &str, sdp_type: &str) -> Result<()> {
+        let sdp = CString::new(sdp).map_err(|_| Error::InvalidArg)?;
+        let sdp_type = CString::new(sdp_type).map_err(|_| Error::InvalidArg)?;
+        check(unsafe { sys::rtcSetRemoteDescription(self.id, sdp.as_ptr(), sdp_type.as_ptr()) })?;
+        Ok(())
     }
 
-    pub fn add_remote_candidate(&mut self, cand: &str, mid: &str) {
-        let cand = CString::new(cand).unwrap();
-        let mid = CString::new(mid).unwrap();
+    pub fn add_remote_candidate(&mut self, cand: &str, mid: &str) -> Result<()> {
+        let cand = CString::new(cand).map_err(|_| Error::InvalidArg)?;
+        let mid = CString::new(mid).map_err(|_| Error::InvalidArg)?;
         unsafe { sys::rtcAddRemoteCandidate(self.id, cand.as_ptr(), mid.as_ptr()) };
+        Ok(())
     }
 }
 
 impl<P, D> Drop for RtcPeerConnection<P, D> {
     fn drop(&mut self) {
-        unsafe { sys::rtcDeletePeerConnection(self.id) };
+        match check(unsafe { sys::rtcDeletePeerConnection(self.id) }) {
+            Err(err) => log::error!(
+                "Error while dropping RtcPeerconnection id={} {:p}: {}",
+                self.id,
+                self,
+                err
+            ),
+            _ => (),
+        }
     }
 }

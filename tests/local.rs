@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 use std::env;
 use std::thread;
+use std::time::Duration;
 
 use crossbeam_channel::{select, unbounded, Sender};
 use datachannel::{
@@ -80,7 +81,7 @@ impl PeerConnection for LocalConn {
         println!("Description {}: {}\n{}", self.id, &sdp_type, &sdp);
         self.signaling
             .send(PeerMsg::RemoteDescription { sdp, sdp_type })
-            .unwrap();
+            .ok();
     }
 
     fn on_candidate(&mut self, cand: &str, mid: &str) {
@@ -105,7 +106,8 @@ impl PeerConnection for LocalConn {
             self.id,
             dc.label()
         );
-        dc.send(format!("Hello from {}", self.id).as_bytes());
+        dc.send(format!("Hello from {}", self.id).as_bytes())
+            .unwrap();
         self.dc.replace(dc);
     }
 }
@@ -113,31 +115,33 @@ impl PeerConnection for LocalConn {
 #[test]
 fn test_connectivity() {
     env::set_var("RUST_LOG", "info");
-    env_logger::init();
-
-    let (tx_res, rx_res) = unbounded();
+    let _ = env_logger::try_init();
 
     let id1 = 1;
     let id2 = 2;
 
+    let (tx_res, rx_res) = unbounded();
     let (tx_peer1, rx_peer1) = unbounded();
     let (tx_peer2, rx_peer2) = unbounded();
 
     let conn1 = LocalConn::new(id1, tx_peer2.clone());
     let conn2 = LocalConn::new(id2, tx_peer1.clone());
 
+    let chan1 = Chan::new(id1, tx_res.clone(), None);
+    let chan2 = Chan::new(id2, tx_res.clone(), None);
+
     let conf = Config::default();
-    let mut pc1 = RtcPeerConnection::new(&conf, conn1, Chan::new(id1, tx_res.clone(), None));
-    let mut pc2 = RtcPeerConnection::new(&conf, conn2, Chan::new(id2, tx_res.clone(), None));
+    let mut pc1 = RtcPeerConnection::new(&conf, conn1, chan1).unwrap();
+    let mut pc2 = RtcPeerConnection::new(&conf, conn2, chan2).unwrap();
 
     let t1 = thread::spawn(move || {
         while let Ok(msg) = rx_peer2.recv() {
             match msg {
                 PeerMsg::RemoteDescription { sdp, sdp_type } => {
-                    pc2.set_remote_description(&sdp, &sdp_type);
+                    pc2.set_remote_description(&sdp, &sdp_type).unwrap();
                 }
                 PeerMsg::RemoteCandidate { cand, mid } => {
-                    pc2.add_remote_candidate(&cand, &mid);
+                    pc2.add_remote_candidate(&cand, &mid).unwrap();
                 }
                 PeerMsg::Stop => return,
             }
@@ -146,19 +150,21 @@ fn test_connectivity() {
 
     let t2 = thread::spawn(move || {
         let (tx_ready, rx_ready) = unbounded();
-        let mut dc =
-            pc1.create_data_channel("test", Chan::new(id1, tx_res.clone(), Some(tx_ready)));
+        let mut dc = pc1
+            .create_data_channel("test", Chan::new(id1, tx_res.clone(), Some(tx_ready)))
+            .unwrap();
 
         loop {
             select! {
-                recv(rx_ready) -> _ => dc.send(format!("Hello from {}", id1).as_bytes()),
+                recv(rx_ready) -> _ =>
+                    dc.send(format!("Hello from {}", id1).as_bytes()).unwrap(),
                 recv(rx_peer1) -> msg => {
                     match msg.unwrap() {
                         PeerMsg::RemoteDescription { sdp, sdp_type } => {
-                            pc1.set_remote_description(&sdp, &sdp_type);
+                            pc1.set_remote_description(&sdp, &sdp_type).unwrap();
                         }
                         PeerMsg::RemoteCandidate { cand, mid } => {
-                            pc1.add_remote_candidate(&cand, &mid);
+                            pc1.add_remote_candidate(&cand, &mid).unwrap();
                         },
                         PeerMsg::Stop => return,
                     }
@@ -172,8 +178,8 @@ fn test_connectivity() {
     expected.insert("Hello from 2".to_string());
 
     let mut res = HashSet::new();
-    res.insert(rx_res.recv().unwrap());
-    res.insert(rx_res.recv().unwrap());
+    res.insert(rx_res.recv_timeout(Duration::from_secs(2)).unwrap());
+    res.insert(rx_res.recv_timeout(Duration::from_secs(2)).unwrap());
 
     assert_eq!(expected, res);
 

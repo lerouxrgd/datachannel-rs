@@ -4,6 +4,8 @@ use std::slice;
 
 use datachannel_sys as sys;
 
+use crate::error::{check, Result};
+
 pub trait MakeDataChannel<D>
 where
     D: DataChannel + Send,
@@ -38,19 +40,34 @@ impl<D> RtcDataChannel<D>
 where
     D: DataChannel + Send,
 {
-    pub(crate) fn new(id: i32, dc: D) -> Box<Self> {
+    pub(crate) fn new(id: i32, dc: D) -> Result<Box<Self>> {
         unsafe {
             let mut rtc_dc = Box::new(RtcDataChannel { id, dc });
             let ptr = &mut *rtc_dc;
 
             sys::rtcSetUserPointer(id, ptr as *mut _ as *mut c_void);
 
-            sys::rtcSetOpenCallback(id, Some(RtcDataChannel::<D>::open_cb));
-            sys::rtcSetClosedCallback(id, Some(RtcDataChannel::<D>::closed_cb));
-            sys::rtcSetErrorCallback(id, Some(RtcDataChannel::<D>::error_cb));
-            sys::rtcSetMessageCallback(id, Some(RtcDataChannel::<D>::message_cb));
+            check(sys::rtcSetOpenCallback(
+                id,
+                Some(RtcDataChannel::<D>::open_cb),
+            ))?;
 
-            rtc_dc
+            check(sys::rtcSetClosedCallback(
+                id,
+                Some(RtcDataChannel::<D>::closed_cb),
+            ))?;
+
+            check(sys::rtcSetErrorCallback(
+                id,
+                Some(RtcDataChannel::<D>::error_cb),
+            ))?;
+
+            check(sys::rtcSetMessageCallback(
+                id,
+                Some(RtcDataChannel::<D>::message_cb),
+            ))?;
+
+            Ok(rtc_dc)
         }
     }
 
@@ -66,8 +83,8 @@ where
 
     unsafe extern "C" fn error_cb(err: *const c_char, ptr: *mut c_void) {
         let rtc_dc = &mut *(ptr as *mut RtcDataChannel<D>);
-        let err = CStr::from_ptr(err).to_str().unwrap();
-        rtc_dc.dc.on_error(err)
+        let err = CStr::from_ptr(err).to_string_lossy();
+        rtc_dc.dc.on_error(&err)
     }
 
     unsafe extern "C" fn message_cb(msg: *const c_char, size: i32, ptr: *mut c_void) {
@@ -82,22 +99,45 @@ where
 
     pub fn label(&self) -> String {
         unsafe {
-            let mut buf: Vec<u8> = vec![0; 512];
-            sys::rtcGetDataChannelLabel(self.id, buf.as_mut_ptr() as *mut c_char, 512 as i32);
-            String::from_utf8(buf)
-                .unwrap()
-                .trim_matches(char::from(0))
-                .to_string()
+            let mut buf: Vec<u8> = vec![0; 256];
+            match check(sys::rtcGetDataChannelLabel(
+                self.id,
+                buf.as_mut_ptr() as *mut c_char,
+                256 as i32,
+            )) {
+                Ok(_) => match String::from_utf8(buf) {
+                    Ok(label) => label.trim_matches(char::from(0)).to_string(),
+                    Err(err) => {
+                        log::error!("Couldn't get RtcDataChannel {:p} label: {}", self, err);
+                        String::default()
+                    }
+                },
+                Err(err) => {
+                    log::error!("Couldn't get RtcDataChannel {:p} label: {}", self, err);
+                    String::default()
+                }
+            }
         }
     }
 
-    pub fn send(&mut self, msg: &[u8]) {
-        unsafe { sys::rtcSendMessage(self.id, msg.as_ptr() as *const c_char, msg.len() as i32) };
+    pub fn send(&mut self, msg: &[u8]) -> Result<()> {
+        check(unsafe {
+            sys::rtcSendMessage(self.id, msg.as_ptr() as *const c_char, msg.len() as i32)
+        })
+        .map(|_| ())
     }
 }
 
 impl<D> Drop for RtcDataChannel<D> {
     fn drop(&mut self) {
-        unsafe { sys::rtcDeleteDataChannel(self.id) };
+        match check(unsafe { sys::rtcDeleteDataChannel(self.id) }) {
+            Err(err) => log::error!(
+                "Error while dropping RtcDataChannel id={} {:p}: {}",
+                self.id,
+                self,
+                err
+            ),
+            _ => (),
+        }
     }
 }
