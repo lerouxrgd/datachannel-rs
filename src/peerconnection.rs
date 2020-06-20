@@ -1,6 +1,8 @@
 use std::ffi::{c_void, CStr, CString};
 use std::os::raw::c_char;
+use std::sync::atomic::{AtomicBool, Ordering};
 
+use crossbeam_utils::Backoff;
 use datachannel_sys as sys;
 
 use crate::config::Config;
@@ -61,6 +63,7 @@ pub trait PeerConnection {
 }
 
 pub struct RtcPeerConnection<P, D> {
+    lock: AtomicBool,
     id: i32,
     pc: P,
     dc: D,
@@ -77,7 +80,12 @@ where
 
         unsafe {
             let id = check(sys::rtcCreatePeerConnection(&config.as_raw()))?;
-            let mut rtc_pc = Box::new(RtcPeerConnection { id, pc, dc });
+            let mut rtc_pc = Box::new(RtcPeerConnection {
+                lock: AtomicBool::new(false),
+                id,
+                pc,
+                dc,
+            });
             let ptr = &mut *rtc_pc;
 
             sys::rtcSetUserPointer(id, ptr as *mut _ as *mut c_void);
@@ -119,7 +127,13 @@ where
         let rtc_pc = &mut *(ptr as *mut RtcPeerConnection<P, D>);
         let sdp = CStr::from_ptr(sdp).to_string_lossy();
         let sdp_type = CStr::from_ptr(sdp_type).to_string_lossy();
-        rtc_pc.pc.on_description(&sdp, &sdp_type)
+
+        let backoff = Backoff::new();
+        while rtc_pc.lock.compare_and_swap(false, true, Ordering::Acquire) {
+            backoff.snooze();
+        }
+        rtc_pc.pc.on_description(&sdp, &sdp_type);
+        rtc_pc.lock.store(false, Ordering::Release);
     }
 
     unsafe extern "C" fn local_candidate_cb(
@@ -130,25 +144,50 @@ where
         let rtc_pc = &mut *(ptr as *mut RtcPeerConnection<P, D>);
         let cand = CStr::from_ptr(cand).to_string_lossy();
         let mid = CStr::from_ptr(mid).to_string_lossy();
-        rtc_pc.pc.on_candidate(&cand, &mid)
+
+        let backoff = Backoff::new();
+        while rtc_pc.lock.compare_and_swap(false, true, Ordering::Acquire) {
+            backoff.snooze();
+        }
+        rtc_pc.pc.on_candidate(&cand, &mid);
+        rtc_pc.lock.store(false, Ordering::Release);
     }
 
     unsafe extern "C" fn state_change_cb(state: sys::rtcState, ptr: *mut c_void) {
         let rtc_pc = &mut *(ptr as *mut RtcPeerConnection<P, D>);
         let state = ConnState::from_raw(state);
-        rtc_pc.pc.on_conn_state_change(state)
+
+        let backoff = Backoff::new();
+        while rtc_pc.lock.compare_and_swap(false, true, Ordering::Acquire) {
+            backoff.snooze();
+        }
+        rtc_pc.pc.on_conn_state_change(state);
+        rtc_pc.lock.store(false, Ordering::Release);
     }
 
     unsafe extern "C" fn gathering_state_cb(state: sys::rtcState, ptr: *mut c_void) {
         let rtc_pc = &mut *(ptr as *mut RtcPeerConnection<P, D>);
         let state = GatheringState::from_raw(state);
-        rtc_pc.pc.on_gathering_state_change(state)
+
+        let backoff = Backoff::new();
+        while rtc_pc.lock.compare_and_swap(false, true, Ordering::Acquire) {
+            backoff.snooze();
+        }
+        rtc_pc.pc.on_gathering_state_change(state);
+        rtc_pc.lock.store(false, Ordering::Release);
     }
 
     unsafe extern "C" fn data_channel_cb(dc: i32, ptr: *mut c_void) {
         let rtc_pc = &mut *(ptr as *mut RtcPeerConnection<P, D>);
         match RtcDataChannel::new(dc, rtc_pc.dc.make()) {
-            Ok(dc) => rtc_pc.pc.on_data_channel(dc),
+            Ok(dc) => {
+                let backoff = Backoff::new();
+                while rtc_pc.lock.compare_and_swap(false, true, Ordering::Acquire) {
+                    backoff.snooze();
+                }
+                rtc_pc.pc.on_data_channel(dc);
+                rtc_pc.lock.store(false, Ordering::Release);
+            }
             Err(err) => log::error!(
                 "Couldn't create RtcDataChannel with id={} from RtcPeerConnection {:p}: {}",
                 dc,
