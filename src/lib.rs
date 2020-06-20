@@ -44,4 +44,9 @@ fn ensure_logging() {
 
 pub use crate::config::Config;
 pub use crate::datachannel::{DataChannel, MakeDataChannel, RtcDataChannel};
-pub use crate::peerconnection::{ConnState, GatheringState, PeerConnection, RtcPeerConnection};
+pub use crate::peerconnection::{
+    ConnState, DescriptionType, GatheringState, PeerConnection, RtcPeerConnection,
+    SessionDescription,
+};
+
+pub use webrtc_sdp as sdp;

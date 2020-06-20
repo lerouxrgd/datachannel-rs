@@ -4,6 +4,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use crossbeam_utils::Backoff;
 use datachannel_sys as sys;
+use webrtc_sdp::{parse_sdp, SdpSession};
 
 use crate::config::Config;
 use crate::datachannel::{DataChannel, MakeDataChannel, RtcDataChannel};
@@ -51,11 +52,48 @@ impl GatheringState {
     }
 }
 
+#[derive(Clone)]
+#[cfg_attr(feature = "serialize", derive(Serialize))]
+pub struct SessionDescription {
+    pub sdp: SdpSession,
+    pub desc_type: DescriptionType,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+#[cfg_attr(feature = "serialize", derive(Serialize))]
+pub enum DescriptionType {
+    Answer,
+    Offer,
+    PrAnswer,
+    Rollback,
+}
+
+impl DescriptionType {
+    fn from(val: &str) -> Result<Self> {
+        match val {
+            "answer" => Ok(Self::Answer),
+            "offer" => Ok(Self::Offer),
+            "pranswer" => Ok(Self::PrAnswer),
+            "rollback" => Ok(Self::Rollback),
+            _ => Err(Error::InvalidArg),
+        }
+    }
+
+    fn val(&self) -> &'static str {
+        match self {
+            Self::Answer => "answer,",
+            Self::Offer => "offer,",
+            Self::PrAnswer => "pranswer,",
+            Self::Rollback => "rollback,",
+        }
+    }
+}
+
 #[allow(unused_variables)]
 pub trait PeerConnection {
     type DC;
 
-    fn on_description(&mut self, sdp: &str, sdp_type: &str) {}
+    fn on_description(&mut self, sess_desc: SessionDescription) {}
     fn on_candidate(&mut self, cand: &str, mid: &str) {}
     fn on_conn_state_change(&mut self, state: ConnState) {}
     fn on_gathering_state_change(&mut self, state: GatheringState) {}
@@ -121,18 +159,41 @@ where
 
     unsafe extern "C" fn local_description_cb(
         sdp: *const c_char,
-        sdp_type: *const c_char,
+        desc_type: *const c_char,
         ptr: *mut c_void,
     ) {
         let rtc_pc = &mut *(ptr as *mut RtcPeerConnection<P, D>);
+
         let sdp = CStr::from_ptr(sdp).to_string_lossy();
-        let sdp_type = CStr::from_ptr(sdp_type).to_string_lossy();
+        let sdp = match parse_sdp(&sdp, false) {
+            Ok(sdp) => sdp,
+            Err(err) => {
+                log::warn!("Ignoring invalid SDP: {}", err);
+                log::debug!("{}", sdp);
+                return;
+            }
+        };
+
+        let desc_type = CStr::from_ptr(desc_type).to_string_lossy();
+        let desc_type = match DescriptionType::from(&desc_type) {
+            Ok(desc_type) => desc_type,
+            Err(_) => {
+                log::warn!(
+                    "Ignoring session with invalid DescriptionType: {}",
+                    desc_type
+                );
+                log::debug!("{}", sdp);
+                return;
+            }
+        };
+
+        let sess_desc = SessionDescription { sdp, desc_type };
 
         let backoff = Backoff::new();
         while rtc_pc.lock.compare_and_swap(false, true, Ordering::Acquire) {
             backoff.snooze();
         }
-        rtc_pc.pc.on_description(&sdp, &sdp_type);
+        rtc_pc.pc.on_description(sess_desc);
         rtc_pc.lock.store(false, Ordering::Release);
     }
 
@@ -197,23 +258,19 @@ where
         }
     }
 
-    pub fn create_data_channel<C>(
-        &mut self,
-        label: &str,
-        handler: C,
-    ) -> Result<Box<RtcDataChannel<C>>>
+    pub fn create_data_channel<C>(&mut self, label: &str, dc: C) -> Result<Box<RtcDataChannel<C>>>
     where
         C: DataChannel + Send,
     {
         let label = CString::new(label).map_err(|_| Error::InvalidArg)?;
-        let dc = check(unsafe { sys::rtcCreateDataChannel(self.id, label.as_ptr()) })?;
-        RtcDataChannel::new(dc, handler)
+        let id = check(unsafe { sys::rtcCreateDataChannel(self.id, label.as_ptr()) })?;
+        RtcDataChannel::new(id, dc)
     }
 
-    pub fn set_remote_description(&mut self, sdp: &str, sdp_type: &str) -> Result<()> {
-        let sdp = CString::new(sdp).map_err(|_| Error::InvalidArg)?;
-        let sdp_type = CString::new(sdp_type).map_err(|_| Error::InvalidArg)?;
-        check(unsafe { sys::rtcSetRemoteDescription(self.id, sdp.as_ptr(), sdp_type.as_ptr()) })?;
+    pub fn set_remote_description(&mut self, sess_desc: &SessionDescription) -> Result<()> {
+        let sdp = CString::new(format!("{}", sess_desc.sdp)).map_err(|_| Error::InvalidArg)?;
+        let desc_type = CString::new(sess_desc.desc_type.val()).map_err(|_| Error::InvalidArg)?;
+        check(unsafe { sys::rtcSetRemoteDescription(self.id, sdp.as_ptr(), desc_type.as_ptr()) })?;
         Ok(())
     }
 

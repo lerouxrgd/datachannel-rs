@@ -6,11 +6,11 @@ use std::time::Duration;
 use crossbeam_channel::{select, unbounded, Sender};
 use datachannel::{
     Config, ConnState, DataChannel, GatheringState, MakeDataChannel, PeerConnection,
-    RtcDataChannel, RtcPeerConnection,
+    RtcDataChannel, RtcPeerConnection, SessionDescription,
 };
 
 enum PeerMsg {
-    RemoteDescription { sdp: String, sdp_type: String },
+    RemoteDescription { sess_desc: SessionDescription },
     RemoteCandidate { cand: String, mid: String },
     Stop,
 }
@@ -76,12 +76,14 @@ impl LocalConn {
 impl PeerConnection for LocalConn {
     type DC = Chan;
 
-    fn on_description(&mut self, sdp: &str, sdp_type: &str) {
-        let (sdp, sdp_type) = (sdp.to_string(), sdp_type.to_string());
-        println!("Description {}: {}\n{}", self.id, &sdp_type, &sdp);
+    fn on_description(&mut self, sess_desc: SessionDescription) {
+        println!(
+            "Description {}: {:?}\n{}",
+            self.id, &sess_desc.desc_type, &sess_desc.sdp
+        );
         self.signaling
-            .send(PeerMsg::RemoteDescription { sdp, sdp_type })
-            .ok();
+            .send(PeerMsg::RemoteDescription { sess_desc })
+            .unwrap();
     }
 
     fn on_candidate(&mut self, cand: &str, mid: &str) {
@@ -137,8 +139,8 @@ fn test_connectivity() {
     let t1 = thread::spawn(move || {
         while let Ok(msg) = rx_peer2.recv() {
             match msg {
-                PeerMsg::RemoteDescription { sdp, sdp_type } => {
-                    pc2.set_remote_description(&sdp, &sdp_type).unwrap();
+                PeerMsg::RemoteDescription { sess_desc } => {
+                    pc2.set_remote_description(&sess_desc).unwrap();
                 }
                 PeerMsg::RemoteCandidate { cand, mid } => {
                     pc2.add_remote_candidate(&cand, &mid).unwrap();
@@ -160,8 +162,8 @@ fn test_connectivity() {
                     dc.send(format!("Hello from {}", id1).as_bytes()).unwrap(),
                 recv(rx_peer1) -> msg => {
                     match msg.unwrap() {
-                        PeerMsg::RemoteDescription { sdp, sdp_type } => {
-                            pc1.set_remote_description(&sdp, &sdp_type).unwrap();
+                        PeerMsg::RemoteDescription { sess_desc } => {
+                            pc1.set_remote_description(&sess_desc).unwrap();
                         }
                         PeerMsg::RemoteCandidate { cand, mid } => {
                             pc1.add_remote_candidate(&cand, &mid).unwrap();
