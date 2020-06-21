@@ -10,11 +10,7 @@ datachannel-sys = { path = "datachannel-sys", version = "0.1.0" }
 derivative = "2.1"
 lazy_static = "1.4"
 log = "0.4"
-serde = {version = "1.0" , features = ["derive"], optional = true}
 webrtc-sdp = "0.3"
-
-[features]
-serialize = ["serde", "webrtc-sdp/serialize"]
 
 [dev-dependencies]
 crossbeam-channel = "0.4"

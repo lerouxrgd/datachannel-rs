@@ -13,7 +13,7 @@ use crate::datachannel::{DataChannel, MakeDataChannel, RtcDataChannel};
 use crate::error::{check, Error, Result};
 
 #[derive(Debug, PartialEq)]
-pub enum ConnState {
+pub enum ConnectionState {
     New,
     Connecting,
     Connected,
@@ -22,7 +22,7 @@ pub enum ConnState {
     Closed,
 }
 
-impl ConnState {
+impl ConnectionState {
     fn from_raw(state: sys::rtcState) -> Self {
         match state {
             sys::rtcState_RTC_NEW => Self::New,
@@ -56,7 +56,6 @@ impl GatheringState {
 
 #[derive(Derivative)]
 #[derivative(Debug)]
-#[cfg_attr(feature = "serialize", derive(Serialize))]
 pub struct SessionDescription {
     #[derivative(Debug(format_with = "fmt_sdp"))]
     pub sdp: SdpSession,
@@ -74,7 +73,6 @@ fn fmt_sdp(sdp: &SdpSession, f: &mut fmt::Formatter) -> std::result::Result<(), 
 }
 
 #[derive(Debug, PartialEq, Clone)]
-#[cfg_attr(feature = "serialize", derive(Serialize))]
 pub enum DescriptionType {
     Answer,
     Offer,
@@ -103,13 +101,19 @@ impl DescriptionType {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct IceCandidate {
+    pub candidate: String,
+    pub mid: String,
+}
+
 #[allow(unused_variables)]
 pub trait PeerConnection {
     type DC;
 
     fn on_description(&mut self, sess_desc: SessionDescription) {}
-    fn on_candidate(&mut self, cand: &str, mid: &str) {}
-    fn on_conn_state_change(&mut self, state: ConnState) {}
+    fn on_candidate(&mut self, cand: IceCandidate) {}
+    fn on_conn_state_change(&mut self, state: ConnectionState) {}
     fn on_gathering_state_change(&mut self, state: GatheringState) {}
     fn on_data_channel(&mut self, data_channel: Box<RtcDataChannel<Self::DC>>) {}
 }
@@ -217,20 +221,21 @@ where
         ptr: *mut c_void,
     ) {
         let rtc_pc = &mut *(ptr as *mut RtcPeerConnection<P, D>);
-        let cand = CStr::from_ptr(cand).to_string_lossy();
-        let mid = CStr::from_ptr(mid).to_string_lossy();
+        let candidate = CStr::from_ptr(cand).to_string_lossy().to_string();
+        let mid = CStr::from_ptr(mid).to_string_lossy().to_string();
+        let cand = IceCandidate { candidate, mid };
 
         let backoff = Backoff::new();
         while rtc_pc.lock.compare_and_swap(false, true, Ordering::Acquire) {
             backoff.snooze();
         }
-        rtc_pc.pc.on_candidate(&cand, &mid);
+        rtc_pc.pc.on_candidate(cand);
         rtc_pc.lock.store(false, Ordering::Release);
     }
 
     unsafe extern "C" fn state_change_cb(state: sys::rtcState, ptr: *mut c_void) {
         let rtc_pc = &mut *(ptr as *mut RtcPeerConnection<P, D>);
-        let state = ConnState::from_raw(state);
+        let state = ConnectionState::from_raw(state);
 
         let backoff = Backoff::new();
         while rtc_pc.lock.compare_and_swap(false, true, Ordering::Acquire) {
@@ -276,21 +281,21 @@ where
     where
         C: DataChannel + Send,
     {
-        let label = CString::new(label).map_err(|_| Error::InvalidArg)?;
+        let label = CString::new(label)?;
         let id = check(unsafe { sys::rtcCreateDataChannel(self.id, label.as_ptr()) })?;
         RtcDataChannel::new(id, dc)
     }
 
     pub fn set_remote_description(&mut self, sess_desc: &SessionDescription) -> Result<()> {
-        let sdp = CString::new(sess_desc.sdp.to_string()).map_err(|_| Error::InvalidArg)?;
-        let desc_type = CString::new(sess_desc.desc_type.val()).map_err(|_| Error::InvalidArg)?;
+        let sdp = CString::new(sess_desc.sdp.to_string())?;
+        let desc_type = CString::new(sess_desc.desc_type.val())?;
         check(unsafe { sys::rtcSetRemoteDescription(self.id, sdp.as_ptr(), desc_type.as_ptr()) })?;
         Ok(())
     }
 
-    pub fn add_remote_candidate(&mut self, cand: &str, mid: &str) -> Result<()> {
-        let cand = CString::new(cand).map_err(|_| Error::InvalidArg)?;
-        let mid = CString::new(mid).map_err(|_| Error::InvalidArg)?;
+    pub fn add_remote_candidate(&mut self, cand: &IceCandidate) -> Result<()> {
+        let mid = CString::new(cand.mid.clone())?;
+        let cand = CString::new(cand.candidate.clone())?;
         unsafe { sys::rtcAddRemoteCandidate(self.id, cand.as_ptr(), mid.as_ptr()) };
         Ok(())
     }

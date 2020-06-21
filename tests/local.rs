@@ -5,13 +5,13 @@ use std::time::Duration;
 
 use crossbeam_channel::{select, unbounded, Sender};
 use datachannel::{
-    Config, ConnState, DataChannel, GatheringState, MakeDataChannel, PeerConnection,
-    RtcDataChannel, RtcPeerConnection, SessionDescription,
+    Config, ConnectionState, DataChannel, GatheringState, IceCandidate, MakeDataChannel,
+    PeerConnection, RtcDataChannel, RtcPeerConnection, SessionDescription,
 };
 
 enum PeerMsg {
     RemoteDescription { sess_desc: SessionDescription },
-    RemoteCandidate { cand: String, mid: String },
+    RemoteCandidate { cand: IceCandidate },
     Stop,
 }
 
@@ -83,15 +83,14 @@ impl PeerConnection for LocalConn {
             .unwrap();
     }
 
-    fn on_candidate(&mut self, cand: &str, mid: &str) {
-        let (cand, mid) = (cand.to_string(), mid.to_string());
-        println!("Candidate {}: {} {}", self.id, &cand, &mid);
+    fn on_candidate(&mut self, cand: IceCandidate) {
+        println!("Candidate {}: {} {}", self.id, &cand.candidate, &cand.mid);
         self.signaling
-            .send(PeerMsg::RemoteCandidate { cand, mid })
+            .send(PeerMsg::RemoteCandidate { cand })
             .unwrap();
     }
 
-    fn on_conn_state_change(&mut self, state: ConnState) {
+    fn on_conn_state_change(&mut self, state: ConnectionState) {
         println!("State {}: {:?}", self.id, state);
     }
 
@@ -141,8 +140,8 @@ fn test_connectivity() {
                 PeerMsg::RemoteDescription { sess_desc } => {
                     pc2.set_remote_description(&sess_desc).unwrap();
                 }
-                PeerMsg::RemoteCandidate { cand, mid } => {
-                    pc2.add_remote_candidate(&cand, &mid).unwrap();
+                PeerMsg::RemoteCandidate { cand } => {
+                    pc2.add_remote_candidate(&cand).unwrap();
                 }
                 PeerMsg::Stop => return,
             }
@@ -164,8 +163,8 @@ fn test_connectivity() {
                         PeerMsg::RemoteDescription { sess_desc } => {
                             pc1.set_remote_description(&sess_desc).unwrap();
                         }
-                        PeerMsg::RemoteCandidate { cand, mid } => {
-                            pc1.add_remote_candidate(&cand, &mid).unwrap();
+                        PeerMsg::RemoteCandidate { cand } => {
+                            pc1.add_remote_candidate(&cand).unwrap();
                         },
                         PeerMsg::Stop => return,
                     }
@@ -179,8 +178,8 @@ fn test_connectivity() {
     expected.insert("Hello from 2".to_string());
 
     let mut res = HashSet::new();
-    res.insert(rx_res.recv_timeout(Duration::from_secs(2)).unwrap());
-    res.insert(rx_res.recv_timeout(Duration::from_secs(2)).unwrap());
+    res.insert(rx_res.recv_timeout(Duration::from_secs(3)).unwrap());
+    res.insert(rx_res.recv_timeout(Duration::from_secs(3)).unwrap());
 
     assert_eq!(expected, res);
 
