@@ -77,10 +77,7 @@ impl PeerConnection for LocalConn {
     type DC = Chan;
 
     fn on_description(&mut self, sess_desc: SessionDescription) {
-        println!(
-            "Description {}: {:?}\n{}",
-            self.id, &sess_desc.desc_type, &sess_desc.sdp
-        );
+        println!("Description {}: {:?}", self.id, &sess_desc);
         self.signaling
             .send(PeerMsg::RemoteDescription { sess_desc })
             .unwrap();
@@ -132,11 +129,13 @@ fn test_connectivity() {
     let chan1 = Chan::new(id1, tx_res.clone(), None);
     let chan2 = Chan::new(id2, tx_res.clone(), None);
 
-    let conf = Config::default();
+    let ice_servers = vec!["stun:stun.l.google.com:19302".to_string()];
+    let conf = Config::new(ice_servers);
+
     let mut pc1 = RtcPeerConnection::new(&conf, conn1, chan1).unwrap();
     let mut pc2 = RtcPeerConnection::new(&conf, conn2, chan2).unwrap();
 
-    let t1 = thread::spawn(move || {
+    let t2 = thread::spawn(move || {
         while let Ok(msg) = rx_peer2.recv() {
             match msg {
                 PeerMsg::RemoteDescription { sess_desc } => {
@@ -150,7 +149,7 @@ fn test_connectivity() {
         }
     });
 
-    let t2 = thread::spawn(move || {
+    let t1 = thread::spawn(move || {
         let (tx_ready, rx_ready) = unbounded();
         let mut dc = pc1
             .create_data_channel("test", Chan::new(id1, tx_res.clone(), Some(tx_ready)))
@@ -187,6 +186,7 @@ fn test_connectivity() {
 
     tx_peer1.send(PeerMsg::Stop).unwrap();
     tx_peer2.send(PeerMsg::Stop).unwrap();
-    t1.join().unwrap();
+
     t2.join().unwrap();
+    t1.join().unwrap();
 }

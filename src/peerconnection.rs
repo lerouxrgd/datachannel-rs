@@ -1,9 +1,11 @@
 use std::ffi::{c_void, CStr, CString};
+use std::fmt;
 use std::os::raw::c_char;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use crossbeam_utils::Backoff;
 use datachannel_sys as sys;
+use derivative::Derivative;
 use webrtc_sdp::{parse_sdp, SdpSession};
 
 use crate::config::Config;
@@ -52,11 +54,23 @@ impl GatheringState {
     }
 }
 
-#[derive(Clone)]
+#[derive(Derivative)]
+#[derivative(Debug)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
 pub struct SessionDescription {
+    #[derivative(Debug(format_with = "fmt_sdp"))]
     pub sdp: SdpSession,
     pub desc_type: DescriptionType,
+}
+
+fn fmt_sdp(sdp: &SdpSession, f: &mut fmt::Formatter) -> std::result::Result<(), fmt::Error> {
+    let sdp = sdp
+        .to_string()
+        .trim_end()
+        .split("\r\n")
+        .collect::<Vec<_>>()
+        .join("; ");
+    f.write_str(format!("{{ {} }}", sdp).as_str())
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -268,7 +282,7 @@ where
     }
 
     pub fn set_remote_description(&mut self, sess_desc: &SessionDescription) -> Result<()> {
-        let sdp = CString::new(format!("{}", sess_desc.sdp)).map_err(|_| Error::InvalidArg)?;
+        let sdp = CString::new(sess_desc.sdp.to_string()).map_err(|_| Error::InvalidArg)?;
         let desc_type = CString::new(sess_desc.desc_type.val()).map_err(|_| Error::InvalidArg)?;
         check(unsafe { sys::rtcSetRemoteDescription(self.id, sdp.as_ptr(), desc_type.as_ptr()) })?;
         Ok(())
@@ -286,7 +300,7 @@ impl<P, D> Drop for RtcPeerConnection<P, D> {
     fn drop(&mut self) {
         match check(unsafe { sys::rtcDeletePeerConnection(self.id) }) {
             Err(err) => log::error!(
-                "Error while dropping RtcPeerconnection id={} {:p}: {}",
+                "Error while dropping RtcPeerConnection id={} {:p}: {}",
                 self.id,
                 self,
                 err
