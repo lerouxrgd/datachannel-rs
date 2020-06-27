@@ -25,7 +25,6 @@ fn main() {
             .build("src/lib.rs");
 
         // Link static openssl
-        println!("cargo:rustc-link-search=native={}/lib", out_dir);
         println!("cargo:rustc-link-lib=static=crypto");
         println!("cargo:rustc-link-lib=static=ssl");
 

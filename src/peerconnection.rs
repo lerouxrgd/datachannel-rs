@@ -180,6 +180,10 @@ where
         desc_type: *const c_char,
         ptr: *mut c_void,
     ) {
+        if ptr.is_null() {
+            log::error!("Invalid user pointer (null) in local_description_cb");
+            return;
+        }
         let rtc_pc = &mut *(ptr as *mut RtcPeerConnection<P, D>);
 
         let sdp = CStr::from_ptr(sdp).to_string_lossy();
@@ -220,7 +224,12 @@ where
         mid: *const c_char,
         ptr: *mut c_void,
     ) {
+        if ptr.is_null() {
+            log::error!("Invalid user pointer (null) in local_candidate_cb");
+            return;
+        }
         let rtc_pc = &mut *(ptr as *mut RtcPeerConnection<P, D>);
+
         let candidate = CStr::from_ptr(cand).to_string_lossy().to_string();
         let mid = CStr::from_ptr(mid).to_string_lossy().to_string();
         let cand = IceCandidate { candidate, mid };
@@ -234,7 +243,12 @@ where
     }
 
     unsafe extern "C" fn state_change_cb(state: sys::rtcState, ptr: *mut c_void) {
+        if ptr.is_null() {
+            log::error!("Invalid user pointer (null) in state_change_cb");
+            return;
+        }
         let rtc_pc = &mut *(ptr as *mut RtcPeerConnection<P, D>);
+
         let state = ConnectionState::from_raw(state);
 
         let backoff = Backoff::new();
@@ -246,7 +260,12 @@ where
     }
 
     unsafe extern "C" fn gathering_state_cb(state: sys::rtcState, ptr: *mut c_void) {
+        if ptr.is_null() {
+            log::error!("Invalid user pointer (null) in gathering_state_cb");
+            return;
+        }
         let rtc_pc = &mut *(ptr as *mut RtcPeerConnection<P, D>);
+
         let state = GatheringState::from_raw(state);
 
         let backoff = Backoff::new();
@@ -258,7 +277,12 @@ where
     }
 
     unsafe extern "C" fn data_channel_cb(dc: i32, ptr: *mut c_void) {
+        if ptr.is_null() {
+            log::error!("Invalid user pointer (null) in data_channel_cb");
+            return;
+        }
         let rtc_pc = &mut *(ptr as *mut RtcPeerConnection<P, D>);
+
         match RtcDataChannel::new(dc, rtc_pc.dc.make()) {
             Ok(dc) => {
                 let backoff = Backoff::new();
