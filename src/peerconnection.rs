@@ -276,16 +276,22 @@ where
         rtc_pc.lock.store(false, Ordering::Release);
     }
 
-    unsafe extern "C" fn data_channel_cb(dc: i32, ptr: *mut c_void) {
+    unsafe extern "C" fn data_channel_cb(id: i32, ptr: *mut c_void) {
         if ptr.is_null() {
             log::error!("Invalid user pointer (null) in data_channel_cb");
             return;
         }
         let rtc_pc = &mut *(ptr as *mut RtcPeerConnection<P, D>);
 
-        match RtcDataChannel::new(dc, rtc_pc.dc.make()) {
+        let backoff = Backoff::new();
+        while rtc_pc.lock.compare_and_swap(false, true, Ordering::Acquire) {
+            backoff.snooze();
+        }
+        let dc = rtc_pc.dc.make();
+        rtc_pc.lock.store(false, Ordering::Release);
+
+        match RtcDataChannel::new(id, dc) {
             Ok(dc) => {
-                let backoff = Backoff::new();
                 while rtc_pc.lock.compare_and_swap(false, true, Ordering::Acquire) {
                     backoff.snooze();
                 }
@@ -294,7 +300,7 @@ where
             }
             Err(err) => log::error!(
                 "Couldn't create RtcDataChannel with id={} from RtcPeerConnection {:p}: {}",
-                dc,
+                id,
                 ptr,
                 err
             ),
@@ -322,6 +328,62 @@ where
         let cand = CString::new(cand.candidate.clone())?;
         unsafe { sys::rtcAddRemoteCandidate(self.id, cand.as_ptr(), mid.as_ptr()) };
         Ok(())
+    }
+
+    pub fn local_address(&self) -> String {
+        const BUF_SIZE: usize = 64;
+        let mut buf: Vec<u8> = vec![0; BUF_SIZE];
+        match check(unsafe {
+            sys::rtcGetLocalAddress(self.id, buf.as_mut_ptr() as *mut c_char, BUF_SIZE as i32)
+        }) {
+            Ok(_) => match String::from_utf8(buf) {
+                Ok(label) => label.trim_matches(char::from(0)).to_string(),
+                Err(err) => {
+                    log::error!(
+                        "Couldn't get RtcPeerConnection {:p} local_address: {}",
+                        self,
+                        err
+                    );
+                    String::default()
+                }
+            },
+            Err(err) => {
+                log::error!(
+                    "Couldn't get RtcPeerConnection {:p} local_address: {}",
+                    self,
+                    err
+                );
+                String::default()
+            }
+        }
+    }
+
+    pub fn remote_address(&self) -> String {
+        const BUF_SIZE: usize = 64;
+        let mut buf: Vec<u8> = vec![0; BUF_SIZE];
+        match check(unsafe {
+            sys::rtcGetRemoteAddress(self.id, buf.as_mut_ptr() as *mut c_char, BUF_SIZE as i32)
+        }) {
+            Ok(_) => match String::from_utf8(buf) {
+                Ok(label) => label.trim_matches(char::from(0)).to_string(),
+                Err(err) => {
+                    log::error!(
+                        "Couldn't get RtcPeerConnection {:p} remote_address: {}",
+                        self,
+                        err
+                    );
+                    String::default()
+                }
+            },
+            Err(err) => {
+                log::error!(
+                    "Couldn't get RtcPeerConnection {:p} remote_address: {}",
+                    self,
+                    err
+                );
+                String::default()
+            }
+        }
     }
 }
 

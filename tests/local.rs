@@ -43,7 +43,7 @@ impl DataChannel for Chan {
 }
 
 impl MakeDataChannel<Chan> for Chan {
-    fn make(&self) -> Chan {
+    fn make(&mut self) -> Chan {
         let ready = match &self.ready {
             None => None,
             Some(ready) => Some(ready.clone()),

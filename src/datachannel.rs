@@ -10,15 +10,15 @@ pub trait MakeDataChannel<D>
 where
     D: DataChannel + Send,
 {
-    fn make(&self) -> D;
+    fn make(&mut self) -> D;
 }
 
 impl<F, D> MakeDataChannel<D> for F
 where
-    F: Fn() -> D,
+    F: FnMut() -> D,
     D: DataChannel + Send,
 {
-    fn make(&self) -> D {
+    fn make(&mut self) -> D {
         self()
     }
 }
@@ -114,24 +114,21 @@ where
     }
 
     pub fn label(&self) -> String {
-        unsafe {
-            let mut buf: Vec<u8> = vec![0; 256];
-            match check(sys::rtcGetDataChannelLabel(
-                self.id,
-                buf.as_mut_ptr() as *mut c_char,
-                256 as i32,
-            )) {
-                Ok(_) => match String::from_utf8(buf) {
-                    Ok(label) => label.trim_matches(char::from(0)).to_string(),
-                    Err(err) => {
-                        log::error!("Couldn't get RtcDataChannel {:p} label: {}", self, err);
-                        String::default()
-                    }
-                },
+        const BUF_SIZE: usize = 256;
+        let mut buf: Vec<u8> = vec![0; BUF_SIZE];
+        match check(unsafe {
+            sys::rtcGetDataChannelLabel(self.id, buf.as_mut_ptr() as *mut c_char, BUF_SIZE as i32)
+        }) {
+            Ok(_) => match String::from_utf8(buf) {
+                Ok(label) => label.trim_matches(char::from(0)).to_string(),
                 Err(err) => {
                     log::error!("Couldn't get RtcDataChannel {:p} label: {}", self, err);
                     String::default()
                 }
+            },
+            Err(err) => {
+                log::error!("Couldn't get RtcDataChannel {:p} label: {}", self, err);
+                String::default()
             }
         }
     }
