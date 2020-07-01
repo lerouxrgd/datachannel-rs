@@ -5,11 +5,11 @@ authors = ["Romain Leroux <romain@leroux.dev>"]
 edition = "2018"
 
 [dependencies]
-crossbeam-utils = "0.7"
 datachannel-sys = { path = "datachannel-sys", version = "0.1.0" }
 derivative = "2.1"
 lazy_static = "1.4"
 log = "0.4"
+parking_lot = "0.11"
 webrtc-sdp = "0.3"
 
 [dev-dependencies]

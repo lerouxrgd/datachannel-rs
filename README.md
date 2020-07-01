@@ -34,11 +34,37 @@ pub trait PeerConnection {
 Custom implementations are meant to be used through `RtcPeerConnection` and
 `RtcDataChannel` structs.
 
-The main struct, `RtcPeerconnection`, takes a `Config` struct (which defines ICE
-servers) and a `MakeDataChannel` instance (a factory used internally for
-`on_data_channel` callback). Note that this factory trait is already implemented for
-`FnMut` closures.
+The main struct, `RtcPeerconnection`, takes a `Config` (which defines ICE servers) and a
+`MakeDataChannel` instance (a factory used internally for `on_data_channel`
+callback). Note that this factory trait is already implemented for `FnMut` closures.
+
+Here is the basic workflow:
+
+```rust
+use datachannel::{Config, DataChannel, MakeDataChannel, PeerConnection, RtcPeerConnection};
+
+struct Chan;
+impl DataChannel for Chan {}
+
+struct Conn;
+impl PeerConnection for Conn {}
+
+let ice_servers = vec!["stun:stun.l.google.com:19302".to_string()];
+let conf = Config::new(ice_servers);
+
+let mut pc = RtcPeerConnection::new(&conf, Conn, || Chan)?;
+
+let dc = pc.create_data_channel("test-dc", Chan)?;
+```
 
 Complete implementation example can be found in the [tests](tests).
+
+## Packaging
+
+By default [libdatachannel][] will be built and linked dynamically. However there is a
+`static` Cargo feature that will build and link it statically.
+
+Note that `CMake` is required to compile [libdatachannel][] through the
+[datachannel-sys](datachannel-sys) crate.
 
 [libdatachannel]: https://github.com/paullouisageneau/libdatachannel
