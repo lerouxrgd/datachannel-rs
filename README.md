@@ -18,6 +18,7 @@ pub trait DataChannel {
     fn on_closed(&mut self) {}
     fn on_error(&mut self, err: &str) {}
     fn on_message(&mut self, msg: &[u8]) {}
+    fn on_buffered_amount_low(&mut self) {}
 }
 
 pub trait PeerConnection {
@@ -62,7 +63,7 @@ Complete implementation example can be found in the [tests](tests).
 ## Packaging
 
 By default [libdatachannel][] will be built and linked dynamically. However there is a
-`static` Cargo feature that will build and link it statically.
+`static` Cargo feature that will build and link it statically (with all its dependencies).
 
 Note that `CMake` is required to compile [libdatachannel][] through the
 [datachannel-sys](datachannel-sys) crate.
