@@ -42,6 +42,16 @@ fn ensure_logging() {
     *sys::INIT_LOGGING;
 }
 
+/// An optional function to preload resources, otherwise they will be loaded lazily.
+pub fn preload() {
+    unsafe { datachannel_sys::rtcPreload() };
+}
+
+/// An optional resources cleanup function.
+pub fn unload() {
+    unsafe { datachannel_sys::rtcCleanup() };
+}
+
 pub use crate::config::Config;
 pub use crate::datachannel::{DataChannel, MakeDataChannel, RtcDataChannel};
 pub use crate::peerconnection::{

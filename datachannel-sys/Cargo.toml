@@ -1,9 +1,18 @@
 [package]
 name = "datachannel-sys"
-version = "0.1.0"
+version = "0.6.5"
 authors = ["Romain Leroux <romain@leroux.dev>"]
 edition = "2018"
 links = "datachannel"
+description = "Native bindings to libdatachannel."
+repository = "https://github.com/lerouxrgd/datachannel-rs"
+categories = ["network-programming"]
+license = "LGPL-2.1"
+
+exclude = [
+  "libdatachannel/deps/json",
+  "libdatachannel/deps/usrsctp/fuzzer",
+]
 
 [dependencies]
 openssl = "0.10"

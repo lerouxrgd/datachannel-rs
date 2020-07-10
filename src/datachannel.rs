@@ -79,38 +79,22 @@ where
     }
 
     unsafe extern "C" fn open_cb(ptr: *mut c_void) {
-        if ptr.is_null() {
-            log::error!("Invalid user pointer (null) in open_cb");
-            return;
-        }
         let rtc_dc = &mut *(ptr as *mut RtcDataChannel<D>);
         rtc_dc.dc.on_open()
     }
 
     unsafe extern "C" fn closed_cb(ptr: *mut c_void) {
-        if ptr.is_null() {
-            log::error!("Invalid user pointer (null) in closed_cb");
-            return;
-        }
         let rtc_dc = &mut *(ptr as *mut RtcDataChannel<D>);
         rtc_dc.dc.on_closed()
     }
 
     unsafe extern "C" fn error_cb(err: *const c_char, ptr: *mut c_void) {
-        if ptr.is_null() {
-            log::error!("Invalid user pointer (null) in error_cb");
-            return;
-        }
         let rtc_dc = &mut *(ptr as *mut RtcDataChannel<D>);
         let err = CStr::from_ptr(err).to_string_lossy();
         rtc_dc.dc.on_error(&err)
     }
 
     unsafe extern "C" fn message_cb(msg: *const c_char, size: i32, ptr: *mut c_void) {
-        if ptr.is_null() {
-            log::error!("Invalid user pointer (null) in message_cb");
-            return;
-        }
         let rtc_dc = &mut *(ptr as *mut RtcDataChannel<D>);
         let msg = if size < 0 {
             CStr::from_ptr(msg).to_bytes()
@@ -121,10 +105,6 @@ where
     }
 
     unsafe extern "C" fn buffered_amount_low_cb(ptr: *mut c_void) {
-        if ptr.is_null() {
-            log::error!("Invalid user pointer (null) in buffered_amount_low_cb");
-            return;
-        }
         let rtc_dc = &mut *(ptr as *mut RtcDataChannel<D>);
         rtc_dc.dc.on_buffered_amount_low()
     }
