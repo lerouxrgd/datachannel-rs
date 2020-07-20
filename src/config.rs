@@ -14,6 +14,9 @@ pub struct Config {
     pub port_range_end: u16,
 }
 
+unsafe impl Send for Config {}
+unsafe impl Sync for Config {}
+
 impl Config {
     pub fn new(ice_servers: Vec<String>) -> Self {
         let mut ice_servers = ice_servers

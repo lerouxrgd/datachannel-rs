@@ -5,6 +5,7 @@ use std::os::raw::c_char;
 use datachannel_sys as sys;
 use derivative::Derivative;
 use parking_lot::ReentrantMutex;
+use serde::{Deserialize, Serialize};
 use webrtc_sdp::{parse_sdp, SdpSession};
 
 use crate::config::Config;
@@ -53,10 +54,11 @@ impl GatheringState {
     }
 }
 
-#[derive(Derivative)]
+#[derive(Derivative, Serialize, Deserialize)]
 #[derivative(Debug)]
 pub struct SessionDescription {
     #[derivative(Debug(format_with = "fmt_sdp"))]
+    #[serde(with = "serde_sdp")]
     pub sdp: SdpSession,
     pub desc_type: DescriptionType,
 }
@@ -71,7 +73,28 @@ fn fmt_sdp(sdp: &SdpSession, f: &mut fmt::Formatter) -> std::result::Result<(), 
     f.write_str(format!("{{ {} }}", sdp).as_str())
 }
 
-#[derive(Debug, PartialEq, Clone)]
+mod serde_sdp {
+    use super::SdpSession;
+    use serde::{de, Deserialize, Deserializer, Serializer};
+
+    pub fn serialize<S>(sdp: &SdpSession, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&sdp.to_string())
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> std::result::Result<SdpSession, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let sdp = String::deserialize(deserializer)?;
+        webrtc_sdp::parse_sdp(&sdp, false).map_err(de::Error::custom)
+    }
+}
+
+#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum DescriptionType {
     Answer,
     Offer,
@@ -100,7 +123,7 @@ impl DescriptionType {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct IceCandidate {
     pub candidate: String,
     pub mid: String,

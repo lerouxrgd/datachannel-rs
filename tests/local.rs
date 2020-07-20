@@ -3,7 +3,8 @@ use std::env;
 use std::thread;
 use std::time::Duration;
 
-use crossbeam_channel::{select, unbounded, Sender};
+use crossbeam_channel::{self as chan, select};
+
 use datachannel::{
     Config, ConnectionState, DataChannel, GatheringState, IceCandidate, MakeDataChannel,
     PeerConnection, RtcDataChannel, RtcPeerConnection, SessionDescription,
@@ -15,21 +16,22 @@ enum PeerMsg {
     Stop,
 }
 
-struct Chan {
+#[derive(Clone)]
+struct DataPipe {
     id: usize,
-    output: Sender<String>,
-    ready: Option<Sender<()>>,
+    output: chan::Sender<String>,
+    ready: Option<chan::Sender<()>>,
 }
 
-impl Chan {
-    fn new(id: usize, output: Sender<String>, ready: Option<Sender<()>>) -> Self {
-        Chan { id, output, ready }
+impl DataPipe {
+    fn new(id: usize, output: chan::Sender<String>, ready: Option<chan::Sender<()>>) -> Self {
+        DataPipe { id, output, ready }
     }
 }
 
-impl DataChannel for Chan {
+impl DataChannel for DataPipe {
     fn on_open(&mut self) {
-        println!("DataChannel {}: Open", self.id);
+        log::info!("DataChannel {}: Open", self.id);
         if let Some(ready) = &self.ready {
             ready.send(()).unwrap();
         }
@@ -37,29 +39,25 @@ impl DataChannel for Chan {
 
     fn on_message(&mut self, msg: &[u8]) {
         let msg = String::from_utf8_lossy(msg).to_string();
-        println!("Message {}: {}", self.id, &msg);
+        log::info!("Message {}: {}", self.id, &msg);
         self.output.send(msg).unwrap();
     }
 }
 
-impl MakeDataChannel<Chan> for Chan {
-    fn make(&mut self) -> Chan {
-        Chan {
-            id: self.id,
-            output: self.output.clone(),
-            ready: self.ready.clone(),
-        }
+impl MakeDataChannel<DataPipe> for DataPipe {
+    fn make(&mut self) -> DataPipe {
+        self.clone()
     }
 }
 
 struct LocalConn {
     id: usize,
-    signaling: Sender<PeerMsg>,
-    dc: Option<Box<RtcDataChannel<Chan>>>,
+    signaling: chan::Sender<PeerMsg>,
+    dc: Option<Box<RtcDataChannel<DataPipe>>>,
 }
 
 impl LocalConn {
-    fn new(id: usize, signaling: Sender<PeerMsg>) -> Self {
+    fn new(id: usize, signaling: chan::Sender<PeerMsg>) -> Self {
         LocalConn {
             id,
             signaling,
@@ -69,32 +67,32 @@ impl LocalConn {
 }
 
 impl PeerConnection for LocalConn {
-    type DC = Chan;
+    type DC = DataPipe;
 
     fn on_description(&mut self, sess_desc: SessionDescription) {
-        println!("Description {}: {:?}", self.id, &sess_desc);
+        log::info!("Description {}: {:?}", self.id, &sess_desc);
         self.signaling
             .send(PeerMsg::RemoteDescription { sess_desc })
             .unwrap();
     }
 
     fn on_candidate(&mut self, cand: IceCandidate) {
-        println!("Candidate {}: {} {}", self.id, &cand.candidate, &cand.mid);
+        log::info!("Candidate {}: {} {}", self.id, &cand.candidate, &cand.mid);
         self.signaling
             .send(PeerMsg::RemoteCandidate { cand })
             .unwrap();
     }
 
     fn on_conn_state_change(&mut self, state: ConnectionState) {
-        println!("State {}: {:?}", self.id, state);
+        log::info!("State {}: {:?}", self.id, state);
     }
 
     fn on_gathering_state_change(&mut self, state: GatheringState) {
-        println!("Gathering state {}: {:?}", self.id, state);
+        log::info!("Gathering state {}: {:?}", self.id, state);
     }
 
-    fn on_data_channel(&mut self, mut dc: Box<RtcDataChannel<Chan>>) {
-        println!(
+    fn on_data_channel(&mut self, mut dc: Box<RtcDataChannel<DataPipe>>) {
+        log::info!(
             "Datachannel {}: Received with label {}",
             self.id,
             dc.label()
@@ -113,21 +111,21 @@ fn test_connectivity() {
     let id1 = 1;
     let id2 = 2;
 
-    let (tx_res, rx_res) = unbounded();
-    let (tx_peer1, rx_peer1) = unbounded();
-    let (tx_peer2, rx_peer2) = unbounded();
+    let (tx_res, rx_res) = chan::unbounded::<String>();
+    let (tx_peer1, rx_peer1) = chan::unbounded::<PeerMsg>();
+    let (tx_peer2, rx_peer2) = chan::unbounded::<PeerMsg>();
 
     let conn1 = LocalConn::new(id1, tx_peer2.clone());
     let conn2 = LocalConn::new(id2, tx_peer1.clone());
 
-    let chan1 = Chan::new(id1, tx_res.clone(), None);
-    let chan2 = Chan::new(id2, tx_res.clone(), None);
+    let pipe1 = DataPipe::new(id1, tx_res.clone(), None);
+    let pipe2 = DataPipe::new(id2, tx_res.clone(), None);
 
     let ice_servers = vec!["stun:stun.l.google.com:19302".to_string()];
     let conf = Config::new(ice_servers);
 
-    let mut pc1 = RtcPeerConnection::new(&conf, conn1, chan1).unwrap();
-    let mut pc2 = RtcPeerConnection::new(&conf, conn2, chan2).unwrap();
+    let mut pc1 = RtcPeerConnection::new(&conf, conn1, pipe1).unwrap();
+    let mut pc2 = RtcPeerConnection::new(&conf, conn2, pipe2).unwrap();
 
     let t2 = thread::spawn(move || {
         while let Ok(msg) = rx_peer2.recv() {
@@ -144,10 +142,9 @@ fn test_connectivity() {
     });
 
     let t1 = thread::spawn(move || {
-        let (tx_ready, rx_ready) = unbounded();
-        let mut dc = pc1
-            .create_data_channel("test", Chan::new(id1, tx_res.clone(), Some(tx_ready)))
-            .unwrap();
+        let (tx_ready, rx_ready) = chan::unbounded();
+        let pipe = DataPipe::new(id1, tx_res.clone(), Some(tx_ready));
+        let mut dc = pc1.create_data_channel("test", pipe).unwrap();
 
         loop {
             select! {
@@ -173,8 +170,8 @@ fn test_connectivity() {
     expected.insert("Hello from 2".to_string());
 
     let mut res = HashSet::new();
-    res.insert(rx_res.recv_timeout(Duration::from_secs(3)).unwrap());
-    res.insert(rx_res.recv_timeout(Duration::from_secs(3)).unwrap());
+    res.insert(rx_res.recv_timeout(Duration::from_secs(5)).unwrap());
+    res.insert(rx_res.recv_timeout(Duration::from_secs(5)).unwrap());
 
     assert_eq!(expected, res);
 
