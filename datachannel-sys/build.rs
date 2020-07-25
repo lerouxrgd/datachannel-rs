@@ -8,7 +8,6 @@ fn main() {
         let mut config = cmake::Config::new("libdatachannel");
         config.build_target("datachannel-static");
         config.out_dir(&out_dir);
-        config.define("USE_JUICE", "ON");
         config.define("NO_WEBSOCKET", "ON");
         config.define("NO_EXAMPLES", "ON");
         config.build();
@@ -16,7 +15,6 @@ fn main() {
 
     let mut config = cmake::Config::new("libdatachannel");
     config.out_dir(&out_dir);
-    config.define("USE_JUICE", "ON");
     config.define("NO_WEBSOCKET", "ON");
     config.define("NO_EXAMPLES", "ON");
     config.build();
