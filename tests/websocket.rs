@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use async_channel as chan;
-use futures_util::{future, pin_mut, select, stream::TryStreamExt, FutureExt, StreamExt};
+use futures_util::{future, pin_mut, select, FutureExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use tokio::net::{TcpListener, TcpStream};
 use tokio_tungstenite::{accept_hdr_async, connect_async};
@@ -75,41 +75,41 @@ async fn handle_new_peer(peers: PeerMap, stream: TcpStream) {
     };
     log::info!("Peer {} connected", &peer_id);
 
-    let (outgoing, incoming) = websocket.split();
+    let (outgoing, mut incoming) = websocket.split();
     let (tx_ws, rx_ws) = chan::unbounded();
 
     peers.lock().unwrap().insert(peer_id, tx_ws);
 
     let reply = rx_ws.map(Ok).forward(outgoing);
 
-    let dispatch = incoming.try_for_each(|msg| {
-        if !msg.is_binary() {
-            return future::ok(());
-        }
-
-        let mut peer_msg = match serde_json::from_slice::<PeerMsg>(&msg.into_data()) {
-            Ok(peer_msg) => peer_msg,
-            Err(err) => {
-                log::error!("Invalid PeerMsg: {}", err);
-                return future::ok(());
+    let dispatch = async {
+        while let Some(Ok(msg)) = incoming.next().await {
+            if !msg.is_binary() {
+                continue;
             }
-        };
-        log::info!("Peer {} << {:?}", &peer_id, &peer_msg);
 
-        let dest_id = peer_msg.dest_id;
+            let mut peer_msg = match serde_json::from_slice::<PeerMsg>(&msg.into_data()) {
+                Ok(peer_msg) => peer_msg,
+                Err(err) => {
+                    log::error!("Invalid PeerMsg: {}", err);
+                    continue;
+                }
+            };
+            log::info!("Peer {} << {:?}", &peer_id, &peer_msg);
 
-        match peers.lock().unwrap().get_mut(&dest_id) {
-            Some(dest_peer) => {
-                peer_msg.dest_id = peer_id;
-                log::info!("Peer {} >> {:?}", &dest_id, &peer_msg);
-                let peer_msg = serde_json::to_vec(&peer_msg).unwrap();
-                dest_peer.try_send(Message::binary(peer_msg)).ok();
+            let dest_id = peer_msg.dest_id;
+
+            match peers.lock().unwrap().get_mut(&dest_id) {
+                Some(dest_peer) => {
+                    peer_msg.dest_id = peer_id;
+                    log::info!("Peer {} >> {:?}", &dest_id, &peer_msg);
+                    let peer_msg = serde_json::to_vec(&peer_msg).unwrap();
+                    dest_peer.try_send(Message::binary(peer_msg)).ok();
+                }
+                _ => log::warn!("Peer {} not found in server", &dest_id),
             }
-            _ => log::warn!("Peer {} not found in server", &dest_id),
         }
-
-        future::ok(())
-    });
+    };
 
     pin_mut!(dispatch, reply);
     future::select(dispatch, reply).await;
@@ -212,7 +212,7 @@ async fn run_client(peer_id: Uuid, input: chan::Receiver<Uuid>, output: chan::Se
     let url = format!("ws://localhost:8989/{:?}", peer_id);
     let (ws_stream, _) = connect_async(url).await.expect("Failed to connect");
 
-    let (outgoing, incoming) = ws_stream.split();
+    let (outgoing, mut incoming) = ws_stream.split();
     let (tx_ws, rx_ws) = chan::unbounded();
 
     let send = async {
@@ -245,50 +245,50 @@ async fn run_client(peer_id: Uuid, input: chan::Receiver<Uuid>, output: chan::Se
 
     let reply = rx_ws.map(Ok).forward(outgoing);
 
-    let receive = incoming.try_for_each(|msg| {
-        if !msg.is_binary() {
-            return future::ok(());
-        }
-
-        let peer_msg = match serde_json::from_slice::<PeerMsg>(&msg.into_data()) {
-            Ok(peer_msg) => peer_msg,
-            Err(err) => {
-                log::error!("Invalid PeerMsg: {}", err);
-                return future::ok(());
+    let receive = async {
+        while let Some(Ok(msg)) = incoming.next().await {
+            if !msg.is_binary() {
+                continue;
             }
-        };
-        let dest_id = peer_msg.dest_id;
 
-        let mut locked = conns.lock().unwrap();
-        let pc = match locked.get_mut(&dest_id) {
-            Some(pc) => pc,
-            None => match &peer_msg.kind {
-                MsgKind::Description(SessionDescription { desc_type, .. })
-                    if matches!(desc_type, DescriptionType::Offer) =>
-                {
-                    log::info!("Client {:?} answering to {:?}", &peer_id, &dest_id);
-
-                    let pipe = DataPipe::new(output.clone(), None);
-                    let conn = WsConn::new(peer_id, dest_id, tx_ws.clone());
-                    let pc = RtcPeerConnection::new(&conf, conn, pipe).unwrap();
-
-                    locked.insert(dest_id, pc);
-                    locked.get_mut(&dest_id).unwrap()
+            let peer_msg = match serde_json::from_slice::<PeerMsg>(&msg.into_data()) {
+                Ok(peer_msg) => peer_msg,
+                Err(err) => {
+                    log::error!("Invalid PeerMsg: {}", err);
+                    continue;
                 }
-                _ => {
-                    log::warn!("Peer {} not found in client", &dest_id);
-                    return future::ok(());
-                }
-            },
-        };
+            };
+            let dest_id = peer_msg.dest_id;
 
-        match &peer_msg.kind {
-            MsgKind::Description(sess_desc) => pc.set_remote_description(sess_desc).ok(),
-            MsgKind::Candidate(cand) => pc.add_remote_candidate(cand).ok(),
-        };
+            let mut locked = conns.lock().unwrap();
+            let pc = match locked.get_mut(&dest_id) {
+                Some(pc) => pc,
+                None => match &peer_msg.kind {
+                    MsgKind::Description(SessionDescription { desc_type, .. })
+                        if matches!(desc_type, DescriptionType::Offer) =>
+                    {
+                        log::info!("Client {:?} answering to {:?}", &peer_id, &dest_id);
 
-        future::ok(())
-    });
+                        let pipe = DataPipe::new(output.clone(), None);
+                        let conn = WsConn::new(peer_id, dest_id, tx_ws.clone());
+                        let pc = RtcPeerConnection::new(&conf, conn, pipe).unwrap();
+
+                        locked.insert(dest_id, pc);
+                        locked.get_mut(&dest_id).unwrap()
+                    }
+                    _ => {
+                        log::warn!("Peer {} not found in client", &dest_id);
+                        continue;
+                    }
+                },
+            };
+
+            match &peer_msg.kind {
+                MsgKind::Description(sess_desc) => pc.set_remote_description(sess_desc).ok(),
+                MsgKind::Candidate(cand) => pc.add_remote_candidate(cand).ok(),
+            };
+        }
+    };
 
     let send = send.fuse();
     pin_mut!(receive, reply, send);
