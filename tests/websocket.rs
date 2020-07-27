@@ -4,13 +4,21 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use async_channel as chan;
+use async_tungstenite::tungstenite::http::{Request, Response, StatusCode};
+use async_tungstenite::tungstenite::protocol::Message;
 use futures_util::{future, pin_mut, select, FutureExt, StreamExt};
 use serde::{Deserialize, Serialize};
-use tokio::net::{TcpListener, TcpStream};
-use tokio_tungstenite::{accept_hdr_async, connect_async};
-use tungstenite::http::{Request, Response, StatusCode};
-use tungstenite::Message;
 use uuid::Uuid;
+
+// use async_std::future::timeout;
+// use async_std::net::{TcpListener, TcpStream};
+// use async_std::task::spawn;
+// use async_tungstenite::accept_hdr_async;
+// use async_tungstenite::async_std::connect_async;
+use async_tungstenite::tokio::{accept_hdr_async, connect_async};
+use tokio::net::{TcpListener, TcpStream};
+use tokio::spawn;
+use tokio::time::timeout;
 
 use datachannel::{
     Config, DataChannel, DescriptionType, IceCandidate, MakeDataChannel, PeerConnection,
@@ -41,7 +49,7 @@ async fn run_server() {
         .expect("Listener binding failed");
 
     while let Ok((stream, _)) = listener.accept().await {
-        tokio::spawn(handle_new_peer(peers.clone(), stream));
+        spawn(handle_new_peer(peers.clone(), stream));
     }
 }
 
@@ -202,9 +210,11 @@ impl PeerConnection for WsConn {
 }
 
 type ConnectionMap = Arc<Mutex<HashMap<Uuid, Box<RtcPeerConnection<WsConn, DataPipe>>>>>;
+type ChannelMap = Arc<Mutex<HashMap<Uuid, Box<RtcDataChannel<DataPipe>>>>>;
 
 async fn run_client(peer_id: Uuid, input: chan::Receiver<Uuid>, output: chan::Sender<String>) {
     let conns = ConnectionMap::new(Mutex::new(HashMap::new()));
+    let chans = ChannelMap::new(Mutex::new(HashMap::new()));
 
     let ice_servers = vec!["stun:stun.l.google.com:19302".to_string()];
     let conf = Config::new(ice_servers);
@@ -241,6 +251,7 @@ async fn run_client(peer_id: Uuid, input: chan::Receiver<Uuid>, output: chan::Se
 
         let data = format!("Hello from {:?}", peer_id);
         dc.send(data.as_bytes()).ok();
+        chans.lock().unwrap().insert(dest_id, dc);
     };
 
     let reply = rx_ws.map(Ok).forward(outgoing);
@@ -300,8 +311,10 @@ async fn run_client(peer_id: Uuid, input: chan::Receiver<Uuid>, output: chan::Se
     }
 
     conns.lock().unwrap().clear();
+    chans.lock().unwrap().clear();
 }
 
+// #[async_std::test]
 #[tokio::test]
 async fn test_connectivity() {
     env::set_var("RUST_LOG", "info");
@@ -310,13 +323,13 @@ async fn test_connectivity() {
     let id1 = Uuid::new_v4();
     let id2 = Uuid::new_v4();
 
-    tokio::spawn(run_server());
+    spawn(run_server());
 
     let (tx_res, rx_res) = chan::unbounded();
     let (tx_id, rx_id) = chan::bounded(2);
 
-    tokio::spawn(run_client(id1, rx_id.clone(), tx_res.clone()));
-    tokio::spawn(run_client(id2, rx_id.clone(), tx_res.clone()));
+    spawn(run_client(id1, rx_id.clone(), tx_res.clone()));
+    spawn(run_client(id2, rx_id.clone(), tx_res.clone()));
 
     let mut expected = HashSet::new();
     expected.insert(format!("Hello from {:?}", id1));
@@ -326,8 +339,8 @@ async fn test_connectivity() {
     tx_id.try_send(id1).unwrap();
 
     let mut res = HashSet::new();
-    let r1 = tokio::time::timeout(Duration::from_secs(5), rx_res.recv()).await;
-    let r2 = tokio::time::timeout(Duration::from_secs(5), rx_res.recv()).await;
+    let r1 = timeout(Duration::from_secs(5), rx_res.recv()).await;
+    let r2 = timeout(Duration::from_secs(5), rx_res.recv()).await;
     res.insert(r1.unwrap().unwrap());
     res.insert(r2.unwrap().unwrap());
 
