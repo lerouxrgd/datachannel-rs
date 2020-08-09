@@ -53,7 +53,7 @@ pub fn unload() {
 }
 
 pub use crate::config::Config;
-pub use crate::datachannel::{DataChannel, MakeDataChannel, RtcDataChannel};
+pub use crate::datachannel::{DataChannel, MakeDataChannel, Reliability, RtcDataChannel};
 pub use crate::peerconnection::{
     ConnectionState, DescriptionType, GatheringState, IceCandidate, PeerConnection,
     RtcPeerConnection, SessionDescription,

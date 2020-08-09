@@ -22,7 +22,7 @@ use tokio::time::timeout;
 
 use datachannel::{
     Config, DataChannel, DescriptionType, IceCandidate, MakeDataChannel, PeerConnection,
-    RtcDataChannel, RtcPeerConnection, SessionDescription,
+    Reliability, RtcDataChannel, RtcPeerConnection, SessionDescription,
 };
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -239,13 +239,12 @@ async fn run_client(peer_id: Uuid, input: chan::Receiver<Uuid>, output: chan::Se
 
         let (tx_ready, mut rx_ready) = chan::bounded(1);
         let pipe = DataPipe::new(output.clone(), Some(tx_ready));
-
         let mut dc = conns
             .lock()
             .unwrap()
             .get_mut(&dest_id)
             .unwrap()
-            .create_data_channel("sender", pipe)
+            .create_data_channel_ext("sender", None, &Reliability::default().unordered(), pipe)
             .unwrap();
         rx_ready.next().await;
 

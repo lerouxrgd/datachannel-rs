@@ -93,9 +93,11 @@ impl PeerConnection for LocalConn {
 
     fn on_data_channel(&mut self, mut dc: Box<RtcDataChannel<DataPipe>>) {
         log::info!(
-            "Datachannel {}: Received with label {}",
+            "Datachannel {}: Received with: label={}, protocol={:?}, reliability={:?}",
             self.id,
-            dc.label()
+            dc.label(),
+            dc.protocol(),
+            dc.reliability()
         );
         dc.send(format!("Hello from {}", self.id).as_bytes())
             .unwrap();
