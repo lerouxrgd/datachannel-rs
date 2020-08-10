@@ -7,6 +7,54 @@ use datachannel_sys as sys;
 
 use crate::error::{check, Error, Result};
 
+#[derive(Debug, Default)]
+pub struct Reliability {
+    pub unordered: bool,
+    pub unreliable: bool,
+    pub max_packet_life_time: u32,
+    pub max_retransmits: u32,
+}
+
+impl Reliability {
+    fn from_raw(raw: sys::rtcReliability) -> Self {
+        Self {
+            unordered: raw.unordered,
+            unreliable: raw.unreliable,
+            max_packet_life_time: raw.maxPacketLifeTime,
+            max_retransmits: raw.maxRetransmits,
+        }
+    }
+
+    pub fn unordered(mut self) -> Self {
+        self.unordered = true;
+        self
+    }
+
+    pub fn unreliable(mut self) -> Self {
+        self.unreliable = true;
+        self
+    }
+
+    pub fn max_packet_life_time(mut self, max_packet_life_time: u32) -> Self {
+        self.max_packet_life_time = max_packet_life_time;
+        self
+    }
+
+    pub fn max_retransmits(mut self, max_retransmits: u32) -> Self {
+        self.max_retransmits = max_retransmits;
+        self
+    }
+
+    pub(crate) fn as_raw(&self) -> sys::rtcReliability {
+        sys::rtcReliability {
+            unordered: self.unordered,
+            unreliable: self.unreliable,
+            maxPacketLifeTime: self.max_packet_life_time,
+            maxRetransmits: self.max_retransmits,
+        }
+    }
+}
+
 pub trait MakeDataChannel<D>
 where
     D: DataChannel + Send,
@@ -111,7 +159,7 @@ where
 
     pub fn label(&self) -> String {
         const BUF_SIZE: usize = 256;
-        let mut buf: Vec<u8> = vec![0; BUF_SIZE];
+        let mut buf = vec![0; BUF_SIZE];
         match check(unsafe {
             sys::rtcGetDataChannelLabel(self.id, buf.as_mut_ptr() as *mut c_char, BUF_SIZE as i32)
         }) {
@@ -137,6 +185,55 @@ where
                 String::default()
             }
         }
+    }
+
+    pub fn protocol(&self) -> Option<String> {
+        const BUF_SIZE: usize = 256;
+        let mut buf = vec![0; BUF_SIZE];
+        match check(unsafe {
+            sys::rtcGetDataChannelProtocol(
+                self.id,
+                buf.as_mut_ptr() as *mut c_char,
+                BUF_SIZE as i32,
+            )
+        }) {
+            Ok(1) => None,
+            Ok(_) => match String::from_utf8(buf) {
+                Ok(protocol) => Some(protocol.trim_matches(char::from(0)).to_string()),
+                Err(err) => {
+                    log::error!(
+                        "Couldn't get protocol for RtcDataChannel id={} {:p}, {}",
+                        self.id,
+                        self,
+                        err
+                    );
+                    Some(String::default())
+                }
+            },
+            Err(err) => {
+                log::error!(
+                    "Couldn't get protocol for RtcDataChannel id={} {:p}, {}",
+                    self.id,
+                    self,
+                    err
+                );
+                Some(String::default())
+            }
+        }
+    }
+
+    pub fn reliability(&self) -> Reliability {
+        let mut reliability = sys::rtcReliability {
+            unordered: false,
+            unreliable: false,
+            maxPacketLifeTime: 0,
+            maxRetransmits: 0,
+        };
+
+        check(unsafe { sys::rtcGetDataChannelReliability(self.id, &mut reliability) })
+            .expect("Couldn't get RtcDataChannel reliability");
+
+        Reliability::from_raw(reliability)
     }
 
     pub fn send(&mut self, msg: &[u8]) -> Result<()> {

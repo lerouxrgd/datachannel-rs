@@ -1,6 +1,7 @@
 use std::ffi::{c_void, CStr, CString};
 use std::fmt;
 use std::os::raw::c_char;
+use std::ptr;
 
 use datachannel_sys as sys;
 use derivative::Derivative;
@@ -9,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use webrtc_sdp::{parse_sdp, SdpSession};
 
 use crate::config::Config;
-use crate::datachannel::{DataChannel, MakeDataChannel, RtcDataChannel};
+use crate::datachannel::{DataChannel, MakeDataChannel, Reliability, RtcDataChannel};
 use crate::error::{check, Error, Result};
 
 #[derive(Debug, PartialEq)]
@@ -293,6 +294,28 @@ where
     {
         let label = CString::new(label)?;
         let id = check(unsafe { sys::rtcCreateDataChannel(self.id, label.as_ptr()) })?;
+        RtcDataChannel::new(id, dc)
+    }
+
+    pub fn create_data_channel_ext<'a, C, S>(
+        &mut self,
+        label: &str,
+        protocol: S,
+        reliability: &Reliability,
+        dc: C,
+    ) -> Result<Box<RtcDataChannel<C>>>
+    where
+        C: DataChannel + Send,
+        S: Into<Option<&'a str>>,
+    {
+        let label = CString::new(label)?;
+        let protocol = match protocol.into() {
+            Some(protocol) => CString::new(protocol)?.as_ptr(),
+            None => ptr::null_mut(),
+        };
+        let id = check(unsafe {
+            sys::rtcCreateDataChannelExt(self.id, label.as_ptr(), protocol, &reliability.as_raw())
+        })?;
         RtcDataChannel::new(id, dc)
     }
 
