@@ -1,6 +1,6 @@
 [package]
 name = "datachannel"
-version = "0.1.3"
+version = "0.1.4"
 authors = ["Romain Leroux <romain@leroux.dev>"]
 edition = "2018"
 description = "Rust wrappers for libdatachannel."
@@ -11,7 +11,7 @@ license = "LGPL-2.1"
 readme = "README.md"
 
 [dependencies]
-datachannel-sys = { path = "datachannel-sys", version = "0.9.0" }
+datachannel-sys = { path = "datachannel-sys", version = "0.9.4" }
 derivative = "2.1"
 lazy_static = "1.4"
 log = "0.4"
