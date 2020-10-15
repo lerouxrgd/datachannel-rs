@@ -39,13 +39,14 @@ Traits implementations are meant to be used through `RtcPeerConnection` and
 `RtcDataChannel` structs.
 
 The main struct, `RtcPeerconnection`, takes a `Config` (which defines ICE servers) and a
-`MakeDataChannel` instance (a factory used internally for `on_data_channel`
-callback). Note that this factory trait is already implemented for `FnMut` closures.
+`MakeDataChannel` instance (a factory trait used internally for `on_data_channel`
+callback). Note that this factory trait has a straightforward blanket implementation for
+`Clone` types.
 
 Here is the basic workflow:
 
 ```rust
-use datachannel::{Config, DataChannel, MakeDataChannel, PeerConnection, RtcPeerConnection};
+use datachannel::{Config, DataChannel, PeerConnection, RtcPeerConnection};
 
 struct Chan;
 impl DataChannel for Chan {}

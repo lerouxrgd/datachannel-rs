@@ -6,8 +6,8 @@ use std::time::Duration;
 use crossbeam_channel::{self as chan, select};
 
 use datachannel::{
-    Config, ConnectionState, DataChannel, GatheringState, IceCandidate, MakeDataChannel,
-    PeerConnection, RtcDataChannel, RtcPeerConnection, SessionDescription,
+    Config, ConnectionState, DataChannel, GatheringState, IceCandidate, PeerConnection,
+    RtcDataChannel, RtcPeerConnection, SessionDescription,
 };
 
 enum PeerMsg {
@@ -33,20 +33,14 @@ impl DataChannel for DataPipe {
     fn on_open(&mut self) {
         log::info!("DataChannel {}: Open", self.id);
         if let Some(ready) = &self.ready {
-            ready.send(()).unwrap();
+            ready.send(()).ok();
         }
     }
 
     fn on_message(&mut self, msg: &[u8]) {
         let msg = String::from_utf8_lossy(msg).to_string();
         log::info!("Message {}: {}", self.id, &msg);
-        self.output.send(msg).unwrap();
-    }
-}
-
-impl MakeDataChannel<DataPipe> for DataPipe {
-    fn make(&mut self) -> DataPipe {
-        self.clone()
+        self.output.send(msg).ok();
     }
 }
 
@@ -73,14 +67,12 @@ impl PeerConnection for LocalConn {
         log::info!("Description {}: {:?}", self.id, &sess_desc);
         self.signaling
             .send(PeerMsg::RemoteDescription { sess_desc })
-            .unwrap();
+            .ok();
     }
 
     fn on_candidate(&mut self, cand: IceCandidate) {
         log::info!("Candidate {}: {} {}", self.id, &cand.candidate, &cand.mid);
-        self.signaling
-            .send(PeerMsg::RemoteCandidate { cand })
-            .unwrap();
+        self.signaling.send(PeerMsg::RemoteCandidate { cand }).ok();
     }
 
     fn on_conn_state_change(&mut self, state: ConnectionState) {
@@ -99,8 +91,7 @@ impl PeerConnection for LocalConn {
             dc.protocol(),
             dc.reliability()
         );
-        dc.send(format!("Hello from {}", self.id).as_bytes())
-            .unwrap();
+        dc.send(format!("Hello from {}", self.id).as_bytes()).ok();
         self.dc.replace(dc);
     }
 }
@@ -133,10 +124,10 @@ fn test_connectivity() {
         while let Ok(msg) = rx_peer2.recv() {
             match msg {
                 PeerMsg::RemoteDescription { sess_desc } => {
-                    pc2.set_remote_description(&sess_desc).unwrap();
+                    pc2.set_remote_description(&sess_desc).ok();
                 }
                 PeerMsg::RemoteCandidate { cand } => {
-                    pc2.add_remote_candidate(&cand).unwrap();
+                    pc2.add_remote_candidate(&cand).ok();
                 }
                 PeerMsg::Stop => return,
             }
@@ -150,15 +141,16 @@ fn test_connectivity() {
 
         loop {
             select! {
-                recv(rx_ready) -> _ =>
-                    dc.send(format!("Hello from {}", id1).as_bytes()).unwrap(),
+                recv(rx_ready) -> _ => {
+                    dc.send(format!("Hello from {}", id1).as_bytes()).ok();
+                },
                 recv(rx_peer1) -> msg => {
                     match msg.unwrap() {
                         PeerMsg::RemoteDescription { sess_desc } => {
-                            pc1.set_remote_description(&sess_desc).unwrap();
+                            pc1.set_remote_description(&sess_desc).ok();
                         }
                         PeerMsg::RemoteCandidate { cand } => {
-                            pc1.add_remote_candidate(&cand).unwrap();
+                            pc1.add_remote_candidate(&cand).ok();
                         },
                         PeerMsg::Stop => return,
                     }

@@ -62,13 +62,12 @@ where
     fn make(&mut self) -> D;
 }
 
-impl<F, D> MakeDataChannel<D> for F
+impl<D> MakeDataChannel<D> for D
 where
-    F: FnMut() -> D,
-    D: DataChannel + Send,
+    D: DataChannel + Send + Clone,
 {
     fn make(&mut self) -> D {
-        self()
+        self.clone()
     }
 }
 

@@ -21,8 +21,8 @@ use tokio::spawn;
 use tokio::time::timeout;
 
 use datachannel::{
-    Config, DataChannel, DescriptionType, IceCandidate, MakeDataChannel, PeerConnection,
-    Reliability, RtcDataChannel, RtcPeerConnection, SessionDescription,
+    Config, DataChannel, DescriptionType, IceCandidate, PeerConnection, Reliability,
+    RtcDataChannel, RtcPeerConnection, SessionDescription,
 };
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -150,12 +150,6 @@ impl DataChannel for DataPipe {
     fn on_message(&mut self, msg: &[u8]) {
         let msg = String::from_utf8_lossy(msg).to_string();
         self.output.try_send(msg).ok();
-    }
-}
-
-impl MakeDataChannel<DataPipe> for DataPipe {
-    fn make(&mut self) -> DataPipe {
-        self.clone()
     }
 }
 

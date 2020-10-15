@@ -10,6 +10,7 @@ fn main() {
         config.out_dir(&out_dir);
         config.define("NO_WEBSOCKET", "ON");
         config.define("NO_EXAMPLES", "ON");
+        config.define("CMAKE_DISABLE_FIND_PACKAGE_SRTP", "1");
         config.build();
     }
 
