@@ -55,6 +55,28 @@ impl GatheringState {
     }
 }
 
+#[derive(Debug, PartialEq)]
+pub enum SignalingState {
+    Stable,
+    HaveLocalOffer,
+    HaveRemoteOffer,
+    HaveLocalPranswer,
+    HaveRemotePranswer,
+}
+
+impl SignalingState {
+    fn from_raw(state: sys::rtcSignalingState) -> Self {
+        match state {
+            sys::rtcSignalingState_RTC_SIGNALING_STABLE => Self::Stable,
+            sys::rtcSignalingState_RTC_SIGNALING_HAVE_LOCAL_OFFER => Self::HaveLocalOffer,
+            sys::rtcSignalingState_RTC_SIGNALING_HAVE_REMOTE_OFFER => Self::HaveRemoteOffer,
+            sys::rtcSignalingState_RTC_SIGNALING_HAVE_LOCAL_PRANSWER => Self::HaveLocalPranswer,
+            sys::rtcSignalingState_RTC_SIGNALING_HAVE_REMOTE_PRANSWER => Self::HaveRemotePranswer,
+            _ => panic!("Unknown rtcSignalingState: {}", state),
+        }
+    }
+}
+
 #[derive(Derivative, Serialize, Deserialize)]
 #[derivative(Debug)]
 pub struct SessionDescription {
@@ -136,8 +158,9 @@ pub trait PeerConnection {
 
     fn on_description(&mut self, sess_desc: SessionDescription) {}
     fn on_candidate(&mut self, cand: IceCandidate) {}
-    fn on_conn_state_change(&mut self, state: ConnectionState) {}
+    fn on_connection_state_change(&mut self, state: ConnectionState) {}
     fn on_gathering_state_change(&mut self, state: GatheringState) {}
+    fn on_signaling_state_change(&mut self, state: SignalingState) {}
     fn on_data_channel(&mut self, data_channel: Box<RtcDataChannel<Self::DC>>) {}
 }
 
@@ -189,6 +212,11 @@ where
                 Some(RtcPeerConnection::<P, D>::gathering_state_cb),
             ))?;
 
+            check(sys::rtcSetSignalingStateChangeCallback(
+                id,
+                Some(RtcPeerConnection::<P, D>::signaling_state_cb),
+            ))?;
+
             check(sys::rtcSetDataChannelCallback(
                 id,
                 Some(RtcPeerConnection::<P, D>::data_channel_cb),
@@ -199,6 +227,7 @@ where
     }
 
     unsafe extern "C" fn local_description_cb(
+        _: i32,
         sdp: *const c_char,
         desc_type: *const c_char,
         ptr: *mut c_void,
@@ -235,6 +264,7 @@ where
     }
 
     unsafe extern "C" fn local_candidate_cb(
+        _: i32,
         cand: *const c_char,
         mid: *const c_char,
         ptr: *mut c_void,
@@ -249,16 +279,16 @@ where
         rtc_pc.pc.on_candidate(cand);
     }
 
-    unsafe extern "C" fn state_change_cb(state: sys::rtcState, ptr: *mut c_void) {
+    unsafe extern "C" fn state_change_cb(_: i32, state: sys::rtcState, ptr: *mut c_void) {
         let rtc_pc = &mut *(ptr as *mut RtcPeerConnection<P, D>);
 
         let state = ConnectionState::from_raw(state);
 
         let _guard = rtc_pc.lock.lock();
-        rtc_pc.pc.on_conn_state_change(state);
+        rtc_pc.pc.on_connection_state_change(state);
     }
 
-    unsafe extern "C" fn gathering_state_cb(state: sys::rtcState, ptr: *mut c_void) {
+    unsafe extern "C" fn gathering_state_cb(_: i32, state: sys::rtcState, ptr: *mut c_void) {
         let rtc_pc = &mut *(ptr as *mut RtcPeerConnection<P, D>);
 
         let state = GatheringState::from_raw(state);
@@ -267,7 +297,16 @@ where
         rtc_pc.pc.on_gathering_state_change(state);
     }
 
-    unsafe extern "C" fn data_channel_cb(id: i32, ptr: *mut c_void) {
+    unsafe extern "C" fn signaling_state_cb(_: i32, state: sys::rtcState, ptr: *mut c_void) {
+        let rtc_pc = &mut *(ptr as *mut RtcPeerConnection<P, D>);
+
+        let state = SignalingState::from_raw(state);
+
+        let _guard = rtc_pc.lock.lock();
+        rtc_pc.pc.on_signaling_state_change(state);
+    }
+
+    unsafe extern "C" fn data_channel_cb(_: i32, id: i32, ptr: *mut c_void) {
         let rtc_pc = &mut *(ptr as *mut RtcPeerConnection<P, D>);
 
         let guard = rtc_pc.lock.lock();
@@ -288,6 +327,12 @@ where
         }
     }
 
+    // TODO: add_data_channel
+
+    /// Creates a boxed `[RtcDataChannel]`.
+    ///
+    /// This method is equivalent to calling `[add_data_channel]` and
+    /// `[set_local_description]`.
     pub fn create_data_channel<C>(&mut self, label: &str, dc: C) -> Result<Box<RtcDataChannel<C>>>
     where
         C: DataChannel + Send,
@@ -317,6 +362,12 @@ where
             sys::rtcCreateDataChannelExt(self.id, label.as_ptr(), protocol, &reliability.as_raw())
         })?;
         RtcDataChannel::new(id, dc)
+    }
+
+    pub fn set_local_description(&mut self, desc_type: DescriptionType) -> Result<()> {
+        let desc_type = CString::new(desc_type.val())?;
+        check(unsafe { sys::rtcSetLocalDescription(self.id, desc_type.as_ptr()) })?;
+        Ok(())
     }
 
     pub fn set_remote_description(&mut self, sess_desc: &SessionDescription) -> Result<()> {
@@ -388,6 +439,8 @@ where
             }
         }
     }
+
+    // TODO: rtcGetSelectedCandidatePair
 }
 
 impl<P, D> Drop for RtcPeerConnection<P, D> {

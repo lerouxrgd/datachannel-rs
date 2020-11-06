@@ -29,7 +29,7 @@ pub trait PeerConnection {
 
     fn on_description(&mut self, sess_desc: SessionDescription) {}
     fn on_candidate(&mut self, cand: IceCandidate) {}
-    fn on_conn_state_change(&mut self, state: ConnectionState) {}
+    fn on_connection_state_change(&mut self, state: ConnectionState) {}
     fn on_gathering_state_change(&mut self, state: GatheringState) {}
     fn on_data_channel(&mut self, data_channel: Box<RtcDataChannel<Self::DC>>) {}
 }

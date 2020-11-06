@@ -125,23 +125,23 @@ where
         }
     }
 
-    unsafe extern "C" fn open_cb(ptr: *mut c_void) {
+    unsafe extern "C" fn open_cb(_: i32, ptr: *mut c_void) {
         let rtc_dc = &mut *(ptr as *mut RtcDataChannel<D>);
         rtc_dc.dc.on_open()
     }
 
-    unsafe extern "C" fn closed_cb(ptr: *mut c_void) {
+    unsafe extern "C" fn closed_cb(_: i32, ptr: *mut c_void) {
         let rtc_dc = &mut *(ptr as *mut RtcDataChannel<D>);
         rtc_dc.dc.on_closed()
     }
 
-    unsafe extern "C" fn error_cb(err: *const c_char, ptr: *mut c_void) {
+    unsafe extern "C" fn error_cb(_: i32, err: *const c_char, ptr: *mut c_void) {
         let rtc_dc = &mut *(ptr as *mut RtcDataChannel<D>);
         let err = CStr::from_ptr(err).to_string_lossy();
         rtc_dc.dc.on_error(&err)
     }
 
-    unsafe extern "C" fn message_cb(msg: *const c_char, size: i32, ptr: *mut c_void) {
+    unsafe extern "C" fn message_cb(_: i32, msg: *const c_char, size: i32, ptr: *mut c_void) {
         let rtc_dc = &mut *(ptr as *mut RtcDataChannel<D>);
         let msg = if size < 0 {
             CStr::from_ptr(msg).to_bytes()
@@ -151,9 +151,16 @@ where
         rtc_dc.dc.on_message(msg)
     }
 
-    unsafe extern "C" fn buffered_amount_low_cb(ptr: *mut c_void) {
+    unsafe extern "C" fn buffered_amount_low_cb(_: i32, ptr: *mut c_void) {
         let rtc_dc = &mut *(ptr as *mut RtcDataChannel<D>);
         rtc_dc.dc.on_buffered_amount_low()
+    }
+
+    pub fn send(&mut self, msg: &[u8]) -> Result<()> {
+        check(unsafe {
+            sys::rtcSendMessage(self.id, msg.as_ptr() as *const c_char, msg.len() as i32)
+        })
+        .map(|_| ())
     }
 
     pub fn label(&self) -> String {
@@ -235,13 +242,6 @@ where
         Reliability::from_raw(reliability)
     }
 
-    pub fn send(&mut self, msg: &[u8]) -> Result<()> {
-        check(unsafe {
-            sys::rtcSendMessage(self.id, msg.as_ptr() as *const c_char, msg.len() as i32)
-        })
-        .map(|_| ())
-    }
-
     pub fn buffered_amount(&self) -> usize {
         match check(unsafe { sys::rtcGetBufferedAmount(self.id) }) {
             Ok(amount) => amount as usize,
@@ -262,6 +262,8 @@ where
         check(unsafe { sys::rtcSetBufferedAmountLowThreshold(self.id, amount) })?;
         Ok(())
     }
+
+    // TODO: rtcGetAvailableAmount
 }
 
 impl<D> Drop for RtcDataChannel<D> {
