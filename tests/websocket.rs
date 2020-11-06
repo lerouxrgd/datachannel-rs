@@ -44,7 +44,7 @@ type PeerMap = Arc<Mutex<HashMap<Uuid, chan::Sender<Message>>>>;
 async fn run_server() {
     let peers = PeerMap::new(Mutex::new(HashMap::new()));
 
-    let mut listener = TcpListener::bind("127.0.0.1:8989")
+    let listener = TcpListener::bind("127.0.0.1:8989")
         .await
         .expect("Listener binding failed");
 
