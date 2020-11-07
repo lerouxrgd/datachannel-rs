@@ -77,6 +77,12 @@ impl SignalingState {
     }
 }
 
+#[derive(Debug, PartialEq, Hash)]
+pub struct CandidatePair {
+    local: String,
+    remote: String,
+}
+
 #[derive(Derivative, Serialize, Deserialize)]
 #[derivative(Debug)]
 pub struct SessionDescription {
@@ -327,7 +333,36 @@ where
         }
     }
 
-    // TODO: add_data_channel
+    pub fn add_data_channel<C>(&mut self, label: &str, dc: C) -> Result<Box<RtcDataChannel<C>>>
+    where
+        C: DataChannel + Send,
+    {
+        let label = CString::new(label)?;
+        let id = check(unsafe { sys::rtcAddDataChannel(self.id, label.as_ptr()) })?;
+        RtcDataChannel::new(id, dc)
+    }
+
+    pub fn add_data_channel_ext<'a, C, S>(
+        &mut self,
+        label: &str,
+        protocol: S,
+        reliability: &Reliability,
+        dc: C,
+    ) -> Result<Box<RtcDataChannel<C>>>
+    where
+        C: DataChannel + Send,
+        S: Into<Option<&'a str>>,
+    {
+        let label = CString::new(label)?;
+        let protocol = match protocol.into() {
+            Some(protocol) => CString::new(protocol)?.as_ptr(),
+            None => ptr::null_mut(),
+        };
+        let id = check(unsafe {
+            sys::rtcAddDataChannelExt(self.id, label.as_ptr(), protocol, &reliability.as_raw())
+        })?;
+        RtcDataChannel::new(id, dc)
+    }
 
     /// Creates a boxed `[RtcDataChannel]`.
     ///
@@ -384,63 +419,102 @@ where
         Ok(())
     }
 
-    pub fn local_address(&self) -> String {
+    pub fn local_address(&self) -> Option<String> {
         const BUF_SIZE: usize = 64;
         let mut buf: Vec<u8> = vec![0; BUF_SIZE];
+
         match check(unsafe {
             sys::rtcGetLocalAddress(self.id, buf.as_mut_ptr() as *mut c_char, BUF_SIZE as i32)
         }) {
             Ok(_) => match String::from_utf8(buf) {
-                Ok(label) => label.trim_matches(char::from(0)).to_string(),
+                Ok(local) => Some(local.trim_matches(char::from(0)).to_string()),
                 Err(err) => {
                     log::error!(
                         "Couldn't get RtcPeerConnection {:p} local_address: {}",
                         self,
                         err
                     );
-                    String::default()
+                    None
                 }
             },
             Err(err) => {
-                log::error!(
+                log::warn!(
                     "Couldn't get RtcPeerConnection {:p} local_address: {}",
                     self,
                     err
                 );
-                String::default()
+                None
             }
         }
     }
 
-    pub fn remote_address(&self) -> String {
+    pub fn remote_address(&self) -> Option<String> {
         const BUF_SIZE: usize = 64;
         let mut buf: Vec<u8> = vec![0; BUF_SIZE];
+
         match check(unsafe {
             sys::rtcGetRemoteAddress(self.id, buf.as_mut_ptr() as *mut c_char, BUF_SIZE as i32)
         }) {
             Ok(_) => match String::from_utf8(buf) {
-                Ok(label) => label.trim_matches(char::from(0)).to_string(),
+                Ok(remote) => Some(remote.trim_matches(char::from(0)).to_string()),
                 Err(err) => {
                     log::error!(
                         "Couldn't get RtcPeerConnection {:p} remote_address: {}",
                         self,
                         err
                     );
-                    String::default()
+                    None
                 }
             },
             Err(err) => {
-                log::error!(
+                log::warn!(
                     "Couldn't get RtcPeerConnection {:p} remote_address: {}",
                     self,
                     err
                 );
-                String::default()
+                None
             }
         }
     }
 
-    // TODO: rtcGetSelectedCandidatePair
+    pub fn selected_candidate_pair(&self) -> Option<CandidatePair> {
+        const BUF_SIZE: usize = 64;
+        let mut local_buf: Vec<u8> = vec![0; BUF_SIZE];
+        let mut remote_buf: Vec<u8> = vec![0; BUF_SIZE];
+
+        match check(unsafe {
+            sys::rtcGetSelectedCandidatePair(
+                self.id,
+                local_buf.as_mut_ptr() as *mut c_char,
+                BUF_SIZE as i32,
+                remote_buf.as_mut_ptr() as *mut c_char,
+                BUF_SIZE as i32,
+            )
+        }) {
+            Ok(_) => match (String::from_utf8(local_buf), String::from_utf8(remote_buf)) {
+                (Ok(local), Ok(remote)) => Some(CandidatePair {
+                    local: local.trim_matches(char::from(0)).to_string(),
+                    remote: remote.trim_matches(char::from(0)).to_string(),
+                }),
+                (Ok(_), Err(err)) | (Err(err), Ok(_)) | (Err(err), Err(_)) => {
+                    log::error!(
+                        "Couldn't get RtcPeerConnection {:p} candidate_pair: {}",
+                        self,
+                        err
+                    );
+                    None
+                }
+            },
+            Err(err) => {
+                log::warn!(
+                    "Couldn't get RtcPeerConnection {:p} candidate_pair: {}",
+                    self,
+                    err
+                );
+                None
+            }
+        }
+    }
 }
 
 impl<P, D> Drop for RtcPeerConnection<P, D> {

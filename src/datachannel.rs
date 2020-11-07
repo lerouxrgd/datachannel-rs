@@ -78,6 +78,7 @@ pub trait DataChannel {
     fn on_error(&mut self, err: &str) {}
     fn on_message(&mut self, msg: &[u8]) {}
     fn on_buffered_amount_low(&mut self) {}
+    fn on_available(&mut self) {}
 }
 
 pub struct RtcDataChannel<D> {
@@ -121,6 +122,11 @@ where
                 Some(RtcDataChannel::<D>::buffered_amount_low_cb),
             ))?;
 
+            check(sys::rtcSetAvailableCallback(
+                id,
+                Some(RtcDataChannel::<D>::available_cb),
+            ))?;
+
             Ok(rtc_dc)
         }
     }
@@ -156,11 +162,42 @@ where
         rtc_dc.dc.on_buffered_amount_low()
     }
 
+    unsafe extern "C" fn available_cb(_: i32, ptr: *mut c_void) {
+        let rtc_dc = &mut *(ptr as *mut RtcDataChannel<D>);
+        rtc_dc.dc.on_available()
+    }
+
     pub fn send(&mut self, msg: &[u8]) -> Result<()> {
         check(unsafe {
             sys::rtcSendMessage(self.id, msg.as_ptr() as *const c_char, msg.len() as i32)
         })
         .map(|_| ())
+    }
+
+    pub fn receive(&mut self, buf_size: usize) -> Result<Vec<u8>> {
+        let mut buf = vec![0; buf_size];
+        let mut size = 0 as i32;
+
+        unsafe {
+            match check(sys::rtcReceiveMessage(
+                self.id,
+                buf.as_mut_ptr() as *mut c_char,
+                &mut size,
+            )) {
+                Ok(_) => {
+                    let msg = if size < 0 {
+                        CStr::from_ptr(buf.as_ptr()).to_bytes()
+                    } else {
+                        slice::from_raw_parts(
+                            buf[..size as usize].as_ptr() as *const u8,
+                            size as usize,
+                        )
+                    };
+                    Ok(msg.to_vec())
+                }
+                Err(err) => Err(err),
+            }
+        }
     }
 
     pub fn label(&self) -> String {
@@ -263,7 +300,20 @@ where
         Ok(())
     }
 
-    // TODO: rtcGetAvailableAmount
+    pub fn available_amount(&self) -> usize {
+        match check(unsafe { sys::rtcGetAvailableAmount(self.id) }) {
+            Ok(amount) => amount as usize,
+            Err(err) => {
+                log::error!(
+                    "Couldn't get available_amount for RtcDataChannel id={} {:p}, {}",
+                    self.id,
+                    self,
+                    err
+                );
+                0
+            }
+        }
+    }
 }
 
 impl<D> Drop for RtcDataChannel<D> {

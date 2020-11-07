@@ -48,14 +48,14 @@ pub fn preload() {
 }
 
 /// An optional resources cleanup function.
-pub fn unload() {
+pub fn cleanup() {
     unsafe { datachannel_sys::rtcCleanup() };
 }
 
 pub use crate::config::Config;
 pub use crate::datachannel::{DataChannel, MakeDataChannel, Reliability, RtcDataChannel};
 pub use crate::peerconnection::{
-    ConnectionState, DescriptionType, GatheringState, IceCandidate, PeerConnection,
+    CandidatePair, ConnectionState, DescriptionType, GatheringState, IceCandidate, PeerConnection,
     RtcPeerConnection, SessionDescription,
 };
 
