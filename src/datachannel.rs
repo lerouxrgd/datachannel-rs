@@ -279,6 +279,9 @@ where
         Reliability::from_raw(reliability)
     }
 
+    /// Number of bytes currently queued to be sent over the data channel.
+    ///
+    /// This method is the counterpart of [`available_amount`].
     pub fn buffered_amount(&self) -> usize {
         match check(unsafe { sys::rtcGetBufferedAmount(self.id) }) {
             Ok(amount) => amount as usize,
@@ -294,12 +297,22 @@ where
         }
     }
 
+    /// Sets the lower threshold of `buffered_amount`.
+    ///
+    /// The default value is 0. When the number of buffered outgoing bytes, as indicated
+    /// by [`buffered_amount`], falls to or below this value, a
+    /// [`on_bufferd_amount_low`] event is fired. This event may be used, for example,
+    /// to implement code which queues more messages to be sent whenever there's room to
+    /// buffer them.
     pub fn set_buffered_amount_low_threshold(&mut self, amount: usize) -> Result<()> {
         let amount = i32::try_from(amount).map_err(|_| Error::InvalidArg)?;
         check(unsafe { sys::rtcSetBufferedAmountLowThreshold(self.id, amount) })?;
         Ok(())
     }
 
+    /// Number of bytes currently queued to be consumed from the data channel.
+    ///
+    /// This method is the counterpart of [`buffered_amount`].
     pub fn available_amount(&self) -> usize {
         match check(unsafe { sys::rtcGetAvailableAmount(self.id) }) {
             Ok(amount) => amount as usize,
