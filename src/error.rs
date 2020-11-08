@@ -4,7 +4,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 pub fn check(code: i32) -> Result<i32> {
     if code < 0 {
-        Err(Error::new(code))
+        Err(Error::from(code))
     } else {
         Ok(code)
     }
@@ -14,14 +14,18 @@ pub fn check(code: i32) -> Result<i32> {
 pub enum Error {
     InvalidArg,
     Runtime,
+    NotAvailable,
+    TooSmall,
     Unkown,
 }
 
-impl Error {
-    fn new(code: i32) -> Self {
+impl From<i32> for Error {
+    fn from(code: i32) -> Self {
         match code {
             -1 => Self::InvalidArg,
             -2 => Self::Runtime,
+            -3 => Self::NotAvailable,
+            -4 => Self::TooSmall,
             _ => Self::Unkown,
         }
     }
@@ -32,6 +36,8 @@ impl Display for Error {
         match self {
             Self::InvalidArg => write!(f, "InvalidArg"),
             Self::Runtime => write!(f, "RuntimeError"),
+            Self::NotAvailable => write!(f, "NotAvailable"),
+            Self::TooSmall => write!(f, "TooSmall"),
             Self::Unkown => write!(f, "UnknownError"),
         }
     }

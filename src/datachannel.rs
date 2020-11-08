@@ -1,6 +1,7 @@
 use std::convert::TryFrom;
 use std::ffi::{c_void, CStr};
 use std::os::raw::c_char;
+use std::ptr;
 use std::slice;
 
 use datachannel_sys as sys;
@@ -174,10 +175,14 @@ where
         .map(|_| ())
     }
 
-    pub fn receive(&mut self, buf_size: usize) -> Result<Vec<u8>> {
-        let mut buf = vec![0; buf_size];
+    pub fn receive(&mut self) -> Result<Option<Vec<u8>>> {
         let mut size = 0 as i32;
+        let buf_size = check(unsafe {
+            sys::rtcReceiveMessage(self.id, ptr::null_mut() as *mut c_char, &mut size)
+        })
+        .expect("Couldn't get buffer size") as usize;
 
+        let mut buf = vec![0; buf_size];
         unsafe {
             match check(sys::rtcReceiveMessage(
                 self.id,
@@ -193,21 +198,26 @@ where
                             size as usize,
                         )
                     };
-                    Ok(msg.to_vec())
+                    Ok(Some(msg.to_vec()))
                 }
+                Err(Error::NotAvailable) => Ok(None),
                 Err(err) => Err(err),
             }
         }
     }
 
     pub fn label(&self) -> String {
-        const BUF_SIZE: usize = 256;
-        let mut buf = vec![0; BUF_SIZE];
+        let buf_size = check(unsafe {
+            sys::rtcGetDataChannelLabel(self.id, ptr::null_mut() as *mut c_char, 0)
+        })
+        .expect("Couldn't get buffer size") as usize;
+
+        let mut buf = vec![0; buf_size];
         match check(unsafe {
-            sys::rtcGetDataChannelLabel(self.id, buf.as_mut_ptr() as *mut c_char, BUF_SIZE as i32)
+            sys::rtcGetDataChannelLabel(self.id, buf.as_mut_ptr() as *mut c_char, buf_size as i32)
         }) {
             Ok(_) => match String::from_utf8(buf) {
-                Ok(label) => label.trim_matches(char::from(0)).to_string(),
+                Ok(label) => label,
                 Err(err) => {
                     log::error!(
                         "Couldn't get label for RtcDataChannel id={} {:p}, {}",
@@ -231,18 +241,22 @@ where
     }
 
     pub fn protocol(&self) -> Option<String> {
-        const BUF_SIZE: usize = 256;
-        let mut buf = vec![0; BUF_SIZE];
+        let buf_size = check(unsafe {
+            sys::rtcGetDataChannelProtocol(self.id, ptr::null_mut() as *mut c_char, 0)
+        })
+        .expect("Couldn't get buffer size") as usize;
+
+        let mut buf = vec![0; buf_size];
         match check(unsafe {
             sys::rtcGetDataChannelProtocol(
                 self.id,
                 buf.as_mut_ptr() as *mut c_char,
-                BUF_SIZE as i32,
+                buf_size as i32,
             )
         }) {
             Ok(1) => None,
             Ok(_) => match String::from_utf8(buf) {
-                Ok(protocol) => Some(protocol.trim_matches(char::from(0)).to_string()),
+                Ok(protocol) => Some(protocol),
                 Err(err) => {
                     log::error!(
                         "Couldn't get protocol for RtcDataChannel id={} {:p}, {}",
@@ -250,17 +264,17 @@ where
                         self,
                         err
                     );
-                    Some(String::default())
+                    None
                 }
             },
             Err(err) => {
-                log::error!(
+                log::warn!(
                     "Couldn't get protocol for RtcDataChannel id={} {:p}, {}",
                     self.id,
                     self,
                     err
                 );
-                Some(String::default())
+                None
             }
         }
     }

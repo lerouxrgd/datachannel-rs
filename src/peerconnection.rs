@@ -420,14 +420,16 @@ where
     }
 
     pub fn local_address(&self) -> Option<String> {
-        const BUF_SIZE: usize = 64;
-        let mut buf: Vec<u8> = vec![0; BUF_SIZE];
+        let buf_size =
+            check(unsafe { sys::rtcGetLocalAddress(self.id, ptr::null_mut() as *mut c_char, 0) })
+                .expect("Couldn't get buffer size") as usize;
 
+        let mut buf = vec![0; buf_size];
         match check(unsafe {
-            sys::rtcGetLocalAddress(self.id, buf.as_mut_ptr() as *mut c_char, BUF_SIZE as i32)
+            sys::rtcGetLocalAddress(self.id, buf.as_mut_ptr() as *mut c_char, buf_size as i32)
         }) {
             Ok(_) => match String::from_utf8(buf) {
-                Ok(local) => Some(local.trim_matches(char::from(0)).to_string()),
+                Ok(local) => Some(local),
                 Err(err) => {
                     log::error!(
                         "Couldn't get RtcPeerConnection {:p} local_address: {}",
@@ -437,6 +439,7 @@ where
                     None
                 }
             },
+            Err(Error::NotAvailable) => None,
             Err(err) => {
                 log::warn!(
                     "Couldn't get RtcPeerConnection {:p} local_address: {}",
@@ -449,11 +452,13 @@ where
     }
 
     pub fn remote_address(&self) -> Option<String> {
-        const BUF_SIZE: usize = 64;
-        let mut buf: Vec<u8> = vec![0; BUF_SIZE];
+        let buf_size =
+            check(unsafe { sys::rtcGetRemoteAddress(self.id, ptr::null_mut() as *mut c_char, 0) })
+                .expect("Couldn't get buffer size") as usize;
 
+        let mut buf = vec![0; buf_size];
         match check(unsafe {
-            sys::rtcGetRemoteAddress(self.id, buf.as_mut_ptr() as *mut c_char, BUF_SIZE as i32)
+            sys::rtcGetRemoteAddress(self.id, buf.as_mut_ptr() as *mut c_char, buf_size as i32)
         }) {
             Ok(_) => match String::from_utf8(buf) {
                 Ok(remote) => Some(remote.trim_matches(char::from(0)).to_string()),
@@ -466,6 +471,7 @@ where
                     None
                 }
             },
+            Err(Error::NotAvailable) => None,
             Err(err) => {
                 log::warn!(
                     "Couldn't get RtcPeerConnection {:p} remote_address: {}",
@@ -478,24 +484,30 @@ where
     }
 
     pub fn selected_candidate_pair(&self) -> Option<CandidatePair> {
-        const BUF_SIZE: usize = 64;
-        let mut local_buf: Vec<u8> = vec![0; BUF_SIZE];
-        let mut remote_buf: Vec<u8> = vec![0; BUF_SIZE];
+        let buf_size = check(unsafe {
+            sys::rtcGetSelectedCandidatePair(
+                self.id,
+                ptr::null_mut() as *mut c_char,
+                0,
+                ptr::null_mut() as *mut c_char,
+                0,
+            )
+        })
+        .expect("Couldn't get buffer size") as usize;
 
+        let mut local_buf = vec![0; buf_size];
+        let mut remote_buf = vec![0; buf_size];
         match check(unsafe {
             sys::rtcGetSelectedCandidatePair(
                 self.id,
                 local_buf.as_mut_ptr() as *mut c_char,
-                BUF_SIZE as i32,
+                buf_size as i32,
                 remote_buf.as_mut_ptr() as *mut c_char,
-                BUF_SIZE as i32,
+                buf_size as i32,
             )
         }) {
             Ok(_) => match (String::from_utf8(local_buf), String::from_utf8(remote_buf)) {
-                (Ok(local), Ok(remote)) => Some(CandidatePair {
-                    local: local.trim_matches(char::from(0)).to_string(),
-                    remote: remote.trim_matches(char::from(0)).to_string(),
-                }),
+                (Ok(local), Ok(remote)) => Some(CandidatePair { local, remote }),
                 (Ok(_), Err(err)) | (Err(err), Ok(_)) | (Err(err), Err(_)) => {
                     log::error!(
                         "Couldn't get RtcPeerConnection {:p} candidate_pair: {}",
@@ -505,6 +517,7 @@ where
                     None
                 }
             },
+            Err(Error::NotAvailable) => None,
             Err(err) => {
                 log::warn!(
                     "Couldn't get RtcPeerConnection {:p} candidate_pair: {}",
