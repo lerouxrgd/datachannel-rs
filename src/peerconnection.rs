@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use webrtc_sdp::{parse_sdp, SdpSession};
 
 use crate::config::Config;
-use crate::datachannel::{DataChannel, MakeDataChannel, Reliability, RtcDataChannel};
+use crate::datachannel::{DataChannel, DataChannelInit, MakeDataChannel, RtcDataChannel};
 use crate::error::{check, Error, Result};
 
 #[derive(Debug, PartialEq)]
@@ -342,24 +342,18 @@ where
         RtcDataChannel::new(id, dc)
     }
 
-    pub fn add_data_channel_ext<'a, C, S>(
+    pub fn add_data_channel_ex<C>(
         &mut self,
         label: &str,
-        protocol: S,
-        reliability: &Reliability,
         dc: C,
+        dc_init: &DataChannelInit,
     ) -> Result<Box<RtcDataChannel<C>>>
     where
         C: DataChannel + Send,
-        S: Into<Option<&'a str>>,
     {
         let label = CString::new(label)?;
-        let protocol = match protocol.into() {
-            Some(protocol) => CString::new(protocol)?.as_ptr(),
-            None => ptr::null_mut(),
-        };
         let id = check(unsafe {
-            sys::rtcAddDataChannelExt(self.id, label.as_ptr(), protocol, &reliability.as_raw())
+            sys::rtcAddDataChannelEx(self.id, label.as_ptr(), &dc_init.as_raw()?)
         })?;
         RtcDataChannel::new(id, dc)
     }
@@ -377,24 +371,18 @@ where
         RtcDataChannel::new(id, dc)
     }
 
-    pub fn create_data_channel_ext<'a, C, S>(
+    pub fn create_data_channel_ex<C>(
         &mut self,
         label: &str,
-        protocol: S,
-        reliability: &Reliability,
         dc: C,
+        dc_init: &DataChannelInit,
     ) -> Result<Box<RtcDataChannel<C>>>
     where
         C: DataChannel + Send,
-        S: Into<Option<&'a str>>,
     {
         let label = CString::new(label)?;
-        let protocol = match protocol.into() {
-            Some(protocol) => CString::new(protocol)?.as_ptr(),
-            None => ptr::null_mut(),
-        };
         let id = check(unsafe {
-            sys::rtcCreateDataChannelExt(self.id, label.as_ptr(), protocol, &reliability.as_raw())
+            sys::rtcCreateDataChannelEx(self.id, label.as_ptr(), &dc_init.as_raw()?)
         })?;
         RtcDataChannel::new(id, dc)
     }
@@ -506,17 +494,21 @@ where
                 buf_size as i32,
             )
         }) {
-            Ok(_) => match (String::from_utf8(local_buf), String::from_utf8(remote_buf)) {
-                (Ok(local), Ok(remote)) => Some(CandidatePair { local, remote }),
-                (Ok(_), Err(err)) | (Err(err), Ok(_)) | (Err(err), Err(_)) => {
-                    log::error!(
-                        "Couldn't get RtcPeerConnection {:p} candidate_pair: {}",
-                        self,
-                        err
-                    );
-                    None
+            Ok(_) => {
+                let local = crate::ffi_string(&local_buf);
+                let remote = crate::ffi_string(&remote_buf);
+                match (local, remote) {
+                    (Ok(local), Ok(remote)) => Some(CandidatePair { local, remote }),
+                    (Ok(_), Err(err)) | (Err(err), Ok(_)) | (Err(err), Err(_)) => {
+                        log::error!(
+                            "Couldn't get RtcPeerConnection {:p} candidate_pair: {}",
+                            self,
+                            err
+                        );
+                        None
+                    }
                 }
-            },
+            }
             Err(Error::NotAvailable) => None,
             Err(err) => {
                 log::warn!(

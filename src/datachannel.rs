@@ -1,5 +1,5 @@
 use std::convert::TryFrom;
-use std::ffi::{c_void, CStr};
+use std::ffi::{c_void, CStr, CString};
 use std::os::raw::c_char;
 use std::ptr;
 use std::slice;
@@ -8,7 +8,7 @@ use datachannel_sys as sys;
 
 use crate::error::{check, Error, Result};
 
-#[derive(Debug, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct Reliability {
     pub unordered: bool,
     pub unreliable: bool,
@@ -53,6 +53,53 @@ impl Reliability {
             maxPacketLifeTime: self.max_packet_life_time,
             maxRetransmits: self.max_retransmits,
         }
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct DataChannelInit {
+    reliability: Reliability,
+    protocol: CString,
+    negotiated: bool,
+    manual_stream: bool,
+    stream: u16,
+}
+
+impl DataChannelInit {
+    pub fn reliability(mut self, reliability: Reliability) -> Self {
+        self.reliability = reliability;
+        self
+    }
+
+    pub fn protocol(mut self, protocol: &str) -> Self {
+        self.protocol = CString::new(protocol).unwrap();
+        self
+    }
+
+    pub fn negotiated(mut self) -> Self {
+        self.negotiated = true;
+        self
+    }
+
+    pub fn manual_stream(mut self) -> Self {
+        self.manual_stream = true;
+        self
+    }
+
+    /// numeric ID 0-65534, ignored if `manual_stream` is false
+    pub fn stream(mut self, stream: u16) -> Self {
+        self.stream = stream;
+        self
+    }
+
+    pub(crate) fn as_raw(&self) -> Result<sys::rtcDataChannelInit> {
+        Ok(sys::rtcDataChannelInit {
+            reliability: self.reliability.as_raw(),
+            protocol: self.protocol.as_ptr(),
+            negotiated: self.negotiated,
+            manualStream: self.manual_stream,
+            stream: self.stream,
+        })
     }
 }
 
@@ -216,7 +263,7 @@ where
         match check(unsafe {
             sys::rtcGetDataChannelLabel(self.id, buf.as_mut_ptr() as *mut c_char, buf_size as i32)
         }) {
-            Ok(_) => match String::from_utf8(buf) {
+            Ok(_) => match crate::ffi_string(&buf) {
                 Ok(label) => label,
                 Err(err) => {
                     log::error!(
@@ -228,8 +275,9 @@ where
                     String::default()
                 }
             },
+
             Err(err) => {
-                log::error!(
+                log::warn!(
                     "Couldn't get label for RtcDataChannel id={} {:p}, {}",
                     self.id,
                     self,
@@ -255,7 +303,7 @@ where
             )
         }) {
             Ok(1) => None,
-            Ok(_) => match String::from_utf8(buf) {
+            Ok(_) => match crate::ffi_string(&buf) {
                 Ok(protocol) => Some(protocol),
                 Err(err) => {
                     log::error!(
@@ -291,6 +339,11 @@ where
             .expect("Couldn't get RtcDataChannel reliability");
 
         Reliability::from_raw(reliability)
+    }
+
+    pub fn stream(&self) -> usize {
+        check(unsafe { sys::rtcGetDataChannelStream(self.id) })
+            .expect("Couldn't get RtcDataChannel stream") as usize
     }
 
     /// Number of bytes currently queued to be sent over the data channel.

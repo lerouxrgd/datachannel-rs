@@ -21,8 +21,8 @@ use tokio::spawn;
 use tokio::time::timeout;
 
 use datachannel::{
-    Config, DataChannel, DescriptionType, IceCandidate, PeerConnection, Reliability,
-    RtcDataChannel, RtcPeerConnection, SessionDescription,
+    Config, DataChannel, DataChannelInit, DescriptionType, IceCandidate, PeerConnection,
+    Reliability, RtcDataChannel, RtcPeerConnection, SessionDescription,
 };
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -197,6 +197,13 @@ impl PeerConnection for WsConn {
     }
 
     fn on_data_channel(&mut self, mut dc: Box<RtcDataChannel<DataPipe>>) {
+        log::info!(
+            "Received Datachannel with: label={}, protocol={:?}, reliability={:?}",
+            dc.label(),
+            dc.protocol(),
+            dc.reliability()
+        );
+
         dc.send(format!("Hello from {}", self.peer_id).as_bytes())
             .ok();
         self.dc.replace(dc);
@@ -233,12 +240,16 @@ async fn run_client(peer_id: Uuid, input: chan::Receiver<Uuid>, output: chan::Se
 
         let (tx_ready, mut rx_ready) = chan::bounded(1);
         let pipe = DataPipe::new(output.clone(), Some(tx_ready));
+        let opts = DataChannelInit::default()
+            .protocol("prototest")
+            .reliability(Reliability::default().unordered());
+
         let mut dc = conns
             .lock()
             .unwrap()
             .get_mut(&dest_id)
             .unwrap()
-            .create_data_channel_ext("sender", None, &Reliability::default().unordered(), pipe)
+            .create_data_channel_ex("sender", pipe, &opts)
             .unwrap();
         rx_ready.next().await;
 

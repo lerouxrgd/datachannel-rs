@@ -10,7 +10,7 @@ fn main() {
         config.out_dir(&out_dir);
         config.define("NO_WEBSOCKET", "ON");
         config.define("NO_EXAMPLES", "ON");
-        config.define("USE_SRTP", "OFF");
+        config.define("NO_MEDIA", "ON");
         config.build();
     }
 

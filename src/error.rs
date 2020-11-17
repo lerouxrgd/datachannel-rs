@@ -17,6 +17,7 @@ pub enum Error {
     NotAvailable,
     TooSmall,
     Unkown,
+    BadString(String),
 }
 
 impl From<i32> for Error {
@@ -39,6 +40,7 @@ impl Display for Error {
             Self::NotAvailable => write!(f, "NotAvailable"),
             Self::TooSmall => write!(f, "TooSmall"),
             Self::Unkown => write!(f, "UnknownError"),
+            Self::BadString(msg) => write!(f, "BadString: {}", msg),
         }
     }
 }
@@ -46,7 +48,19 @@ impl Display for Error {
 impl std::error::Error for Error {}
 
 impl From<std::ffi::NulError> for Error {
-    fn from(_source: std::ffi::NulError) -> Self {
-        Self::InvalidArg
+    fn from(e: std::ffi::NulError) -> Self {
+        Self::BadString(e.to_string())
+    }
+}
+
+impl From<std::ffi::FromBytesWithNulError> for Error {
+    fn from(e: std::ffi::FromBytesWithNulError) -> Self {
+        Self::BadString(e.to_string())
+    }
+}
+
+impl From<std::string::FromUtf8Error> for Error {
+    fn from(e: std::string::FromUtf8Error) -> Self {
+        Self::BadString(e.to_string())
     }
 }
