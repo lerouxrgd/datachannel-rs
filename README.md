@@ -22,6 +22,7 @@ pub trait DataChannel {
     fn on_error(&mut self, err: &str) {}
     fn on_message(&mut self, msg: &[u8]) {}
     fn on_buffered_amount_low(&mut self) {}
+    fn on_available(&mut self) {}
 }
 
 pub trait PeerConnection {
@@ -29,7 +30,7 @@ pub trait PeerConnection {
 
     fn on_description(&mut self, sess_desc: SessionDescription) {}
     fn on_candidate(&mut self, cand: IceCandidate) {}
-    fn on_conn_state_change(&mut self, state: ConnectionState) {}
+    fn on_connection_state_change(&mut self, state: ConnectionState) {}
     fn on_gathering_state_change(&mut self, state: GatheringState) {}
     fn on_data_channel(&mut self, data_channel: Box<RtcDataChannel<Self::DC>>) {}
 }
@@ -59,7 +60,8 @@ let conf = Config::new(ice_servers);
 
 let mut pc = RtcPeerConnection::new(&conf, Conn, || Chan)?;
 
-let dc = pc.create_data_channel("test-dc", Chan)?;
+let mut dc = pc.create_data_channel("test-dc", Chan)?;
+dc.send("Hello Peer!".as_bytes())?;
 ```
 
 Complete implementation example can be found in the [tests](tests).

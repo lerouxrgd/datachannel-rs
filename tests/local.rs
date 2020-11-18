@@ -75,7 +75,7 @@ impl PeerConnection for LocalConn {
         self.signaling.send(PeerMsg::RemoteCandidate { cand }).ok();
     }
 
-    fn on_conn_state_change(&mut self, state: ConnectionState) {
+    fn on_connection_state_change(&mut self, state: ConnectionState) {
         log::info!("State {}: {:?}", self.id, state);
     }
 

@@ -1,13 +1,14 @@
 use std::convert::TryFrom;
-use std::ffi::{c_void, CStr};
+use std::ffi::{c_void, CStr, CString};
 use std::os::raw::c_char;
+use std::ptr;
 use std::slice;
 
 use datachannel_sys as sys;
 
 use crate::error::{check, Error, Result};
 
-#[derive(Debug, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct Reliability {
     pub unordered: bool,
     pub unreliable: bool,
@@ -55,6 +56,53 @@ impl Reliability {
     }
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct DataChannelInit {
+    reliability: Reliability,
+    protocol: CString,
+    negotiated: bool,
+    manual_stream: bool,
+    stream: u16,
+}
+
+impl DataChannelInit {
+    pub fn reliability(mut self, reliability: Reliability) -> Self {
+        self.reliability = reliability;
+        self
+    }
+
+    pub fn protocol(mut self, protocol: &str) -> Self {
+        self.protocol = CString::new(protocol).unwrap();
+        self
+    }
+
+    pub fn negotiated(mut self) -> Self {
+        self.negotiated = true;
+        self
+    }
+
+    pub fn manual_stream(mut self) -> Self {
+        self.manual_stream = true;
+        self
+    }
+
+    /// numeric ID 0-65534, ignored if `manual_stream` is false
+    pub fn stream(mut self, stream: u16) -> Self {
+        self.stream = stream;
+        self
+    }
+
+    pub(crate) fn as_raw(&self) -> Result<sys::rtcDataChannelInit> {
+        Ok(sys::rtcDataChannelInit {
+            reliability: self.reliability.as_raw(),
+            protocol: self.protocol.as_ptr(),
+            negotiated: self.negotiated,
+            manualStream: self.manual_stream,
+            stream: self.stream,
+        })
+    }
+}
+
 pub trait MakeDataChannel<D>
 where
     D: DataChannel + Send,
@@ -78,6 +126,7 @@ pub trait DataChannel {
     fn on_error(&mut self, err: &str) {}
     fn on_message(&mut self, msg: &[u8]) {}
     fn on_buffered_amount_low(&mut self) {}
+    fn on_available(&mut self) {}
 }
 
 pub struct RtcDataChannel<D> {
@@ -121,27 +170,32 @@ where
                 Some(RtcDataChannel::<D>::buffered_amount_low_cb),
             ))?;
 
+            check(sys::rtcSetAvailableCallback(
+                id,
+                Some(RtcDataChannel::<D>::available_cb),
+            ))?;
+
             Ok(rtc_dc)
         }
     }
 
-    unsafe extern "C" fn open_cb(ptr: *mut c_void) {
+    unsafe extern "C" fn open_cb(_: i32, ptr: *mut c_void) {
         let rtc_dc = &mut *(ptr as *mut RtcDataChannel<D>);
         rtc_dc.dc.on_open()
     }
 
-    unsafe extern "C" fn closed_cb(ptr: *mut c_void) {
+    unsafe extern "C" fn closed_cb(_: i32, ptr: *mut c_void) {
         let rtc_dc = &mut *(ptr as *mut RtcDataChannel<D>);
         rtc_dc.dc.on_closed()
     }
 
-    unsafe extern "C" fn error_cb(err: *const c_char, ptr: *mut c_void) {
+    unsafe extern "C" fn error_cb(_: i32, err: *const c_char, ptr: *mut c_void) {
         let rtc_dc = &mut *(ptr as *mut RtcDataChannel<D>);
         let err = CStr::from_ptr(err).to_string_lossy();
         rtc_dc.dc.on_error(&err)
     }
 
-    unsafe extern "C" fn message_cb(msg: *const c_char, size: i32, ptr: *mut c_void) {
+    unsafe extern "C" fn message_cb(_: i32, msg: *const c_char, size: i32, ptr: *mut c_void) {
         let rtc_dc = &mut *(ptr as *mut RtcDataChannel<D>);
         let msg = if size < 0 {
             CStr::from_ptr(msg).to_bytes()
@@ -151,19 +205,66 @@ where
         rtc_dc.dc.on_message(msg)
     }
 
-    unsafe extern "C" fn buffered_amount_low_cb(ptr: *mut c_void) {
+    unsafe extern "C" fn buffered_amount_low_cb(_: i32, ptr: *mut c_void) {
         let rtc_dc = &mut *(ptr as *mut RtcDataChannel<D>);
         rtc_dc.dc.on_buffered_amount_low()
     }
 
+    unsafe extern "C" fn available_cb(_: i32, ptr: *mut c_void) {
+        let rtc_dc = &mut *(ptr as *mut RtcDataChannel<D>);
+        rtc_dc.dc.on_available()
+    }
+
+    pub fn send(&mut self, msg: &[u8]) -> Result<()> {
+        check(unsafe {
+            sys::rtcSendMessage(self.id, msg.as_ptr() as *const c_char, msg.len() as i32)
+        })
+        .map(|_| ())
+    }
+
+    pub fn receive(&mut self) -> Result<Option<Vec<u8>>> {
+        let mut size = 0 as i32;
+        let buf_size = check(unsafe {
+            sys::rtcReceiveMessage(self.id, ptr::null_mut() as *mut c_char, &mut size)
+        })
+        .expect("Couldn't get buffer size") as usize;
+
+        let mut buf = vec![0; buf_size];
+        unsafe {
+            match check(sys::rtcReceiveMessage(
+                self.id,
+                buf.as_mut_ptr() as *mut c_char,
+                &mut size,
+            )) {
+                Ok(_) => {
+                    let msg = if size < 0 {
+                        CStr::from_ptr(buf.as_ptr()).to_bytes()
+                    } else {
+                        slice::from_raw_parts(
+                            buf[..size as usize].as_ptr() as *const u8,
+                            size as usize,
+                        )
+                    };
+                    Ok(Some(msg.to_vec()))
+                }
+                Err(Error::NotAvailable) => Ok(None),
+                Err(err) => Err(err),
+            }
+        }
+    }
+
     pub fn label(&self) -> String {
-        const BUF_SIZE: usize = 256;
-        let mut buf = vec![0; BUF_SIZE];
+        let buf_size = check(unsafe {
+            sys::rtcGetDataChannelLabel(self.id, ptr::null_mut() as *mut c_char, 0)
+        })
+        .expect("Couldn't get buffer size") as usize;
+
+        let mut buf = vec![0; buf_size];
         match check(unsafe {
-            sys::rtcGetDataChannelLabel(self.id, buf.as_mut_ptr() as *mut c_char, BUF_SIZE as i32)
+            sys::rtcGetDataChannelLabel(self.id, buf.as_mut_ptr() as *mut c_char, buf_size as i32)
         }) {
-            Ok(_) => match String::from_utf8(buf) {
-                Ok(label) => label.trim_matches(char::from(0)).to_string(),
+            Ok(_) => match crate::ffi_string(&buf) {
+                Ok(label) => label,
                 Err(err) => {
                     log::error!(
                         "Couldn't get label for RtcDataChannel id={} {:p}, {}",
@@ -174,8 +275,9 @@ where
                     String::default()
                 }
             },
+
             Err(err) => {
-                log::error!(
+                log::warn!(
                     "Couldn't get label for RtcDataChannel id={} {:p}, {}",
                     self.id,
                     self,
@@ -187,18 +289,22 @@ where
     }
 
     pub fn protocol(&self) -> Option<String> {
-        const BUF_SIZE: usize = 256;
-        let mut buf = vec![0; BUF_SIZE];
+        let buf_size = check(unsafe {
+            sys::rtcGetDataChannelProtocol(self.id, ptr::null_mut() as *mut c_char, 0)
+        })
+        .expect("Couldn't get buffer size") as usize;
+
+        let mut buf = vec![0; buf_size];
         match check(unsafe {
             sys::rtcGetDataChannelProtocol(
                 self.id,
                 buf.as_mut_ptr() as *mut c_char,
-                BUF_SIZE as i32,
+                buf_size as i32,
             )
         }) {
             Ok(1) => None,
-            Ok(_) => match String::from_utf8(buf) {
-                Ok(protocol) => Some(protocol.trim_matches(char::from(0)).to_string()),
+            Ok(_) => match crate::ffi_string(&buf) {
+                Ok(protocol) => Some(protocol),
                 Err(err) => {
                     log::error!(
                         "Couldn't get protocol for RtcDataChannel id={} {:p}, {}",
@@ -206,17 +312,17 @@ where
                         self,
                         err
                     );
-                    Some(String::default())
+                    None
                 }
             },
             Err(err) => {
-                log::error!(
+                log::warn!(
                     "Couldn't get protocol for RtcDataChannel id={} {:p}, {}",
                     self.id,
                     self,
                     err
                 );
-                Some(String::default())
+                None
             }
         }
     }
@@ -235,13 +341,14 @@ where
         Reliability::from_raw(reliability)
     }
 
-    pub fn send(&mut self, msg: &[u8]) -> Result<()> {
-        check(unsafe {
-            sys::rtcSendMessage(self.id, msg.as_ptr() as *const c_char, msg.len() as i32)
-        })
-        .map(|_| ())
+    pub fn stream(&self) -> usize {
+        check(unsafe { sys::rtcGetDataChannelStream(self.id) })
+            .expect("Couldn't get RtcDataChannel stream") as usize
     }
 
+    /// Number of bytes currently queued to be sent over the data channel.
+    ///
+    /// This method is the counterpart of [`available_amount`].
     pub fn buffered_amount(&self) -> usize {
         match check(unsafe { sys::rtcGetBufferedAmount(self.id) }) {
             Ok(amount) => amount as usize,
@@ -257,10 +364,35 @@ where
         }
     }
 
+    /// Sets the lower threshold of `buffered_amount`.
+    ///
+    /// The default value is 0. When the number of buffered outgoing bytes, as indicated
+    /// by [`buffered_amount`], falls to or below this value, a
+    /// [`on_bufferd_amount_low`] event is fired. This event may be used, for example,
+    /// to implement code which queues more messages to be sent whenever there's room to
+    /// buffer them.
     pub fn set_buffered_amount_low_threshold(&mut self, amount: usize) -> Result<()> {
         let amount = i32::try_from(amount).map_err(|_| Error::InvalidArg)?;
         check(unsafe { sys::rtcSetBufferedAmountLowThreshold(self.id, amount) })?;
         Ok(())
+    }
+
+    /// Number of bytes currently queued to be consumed from the data channel.
+    ///
+    /// This method is the counterpart of [`buffered_amount`].
+    pub fn available_amount(&self) -> usize {
+        match check(unsafe { sys::rtcGetAvailableAmount(self.id) }) {
+            Ok(amount) => amount as usize,
+            Err(err) => {
+                log::error!(
+                    "Couldn't get available_amount for RtcDataChannel id={} {:p}, {}",
+                    self.id,
+                    self,
+                    err
+                );
+                0
+            }
+        }
     }
 }
 

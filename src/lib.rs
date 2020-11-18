@@ -42,20 +42,28 @@ fn ensure_logging() {
     *sys::INIT_LOGGING;
 }
 
+fn ffi_string(ffi: &[u8]) -> crate::error::Result<String> {
+    use std::ffi::CStr;
+    let bytes = CStr::to_bytes(CStr::from_bytes_with_nul(&ffi)?);
+    Ok(String::from_utf8(bytes.to_vec())?)
+}
+
 /// An optional function to preload resources, otherwise they will be loaded lazily.
 pub fn preload() {
     unsafe { datachannel_sys::rtcPreload() };
 }
 
 /// An optional resources cleanup function.
-pub fn unload() {
+pub fn cleanup() {
     unsafe { datachannel_sys::rtcCleanup() };
 }
 
 pub use crate::config::Config;
-pub use crate::datachannel::{DataChannel, MakeDataChannel, Reliability, RtcDataChannel};
+pub use crate::datachannel::{
+    DataChannel, DataChannelInit, MakeDataChannel, Reliability, RtcDataChannel,
+};
 pub use crate::peerconnection::{
-    ConnectionState, DescriptionType, GatheringState, IceCandidate, PeerConnection,
+    CandidatePair, ConnectionState, DescriptionType, GatheringState, IceCandidate, PeerConnection,
     RtcPeerConnection, SessionDescription,
 };
 

@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use webrtc_sdp::{parse_sdp, SdpSession};
 
 use crate::config::Config;
-use crate::datachannel::{DataChannel, MakeDataChannel, Reliability, RtcDataChannel};
+use crate::datachannel::{DataChannel, DataChannelInit, MakeDataChannel, RtcDataChannel};
 use crate::error::{check, Error, Result};
 
 #[derive(Debug, PartialEq)]
@@ -53,6 +53,34 @@ impl GatheringState {
             _ => panic!("Unknown rtcGatheringState: {}", state),
         }
     }
+}
+
+#[derive(Debug, PartialEq)]
+pub enum SignalingState {
+    Stable,
+    HaveLocalOffer,
+    HaveRemoteOffer,
+    HaveLocalPranswer,
+    HaveRemotePranswer,
+}
+
+impl SignalingState {
+    fn from_raw(state: sys::rtcSignalingState) -> Self {
+        match state {
+            sys::rtcSignalingState_RTC_SIGNALING_STABLE => Self::Stable,
+            sys::rtcSignalingState_RTC_SIGNALING_HAVE_LOCAL_OFFER => Self::HaveLocalOffer,
+            sys::rtcSignalingState_RTC_SIGNALING_HAVE_REMOTE_OFFER => Self::HaveRemoteOffer,
+            sys::rtcSignalingState_RTC_SIGNALING_HAVE_LOCAL_PRANSWER => Self::HaveLocalPranswer,
+            sys::rtcSignalingState_RTC_SIGNALING_HAVE_REMOTE_PRANSWER => Self::HaveRemotePranswer,
+            _ => panic!("Unknown rtcSignalingState: {}", state),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Hash)]
+pub struct CandidatePair {
+    local: String,
+    remote: String,
 }
 
 #[derive(Derivative, Serialize, Deserialize)]
@@ -136,8 +164,9 @@ pub trait PeerConnection {
 
     fn on_description(&mut self, sess_desc: SessionDescription) {}
     fn on_candidate(&mut self, cand: IceCandidate) {}
-    fn on_conn_state_change(&mut self, state: ConnectionState) {}
+    fn on_connection_state_change(&mut self, state: ConnectionState) {}
     fn on_gathering_state_change(&mut self, state: GatheringState) {}
+    fn on_signaling_state_change(&mut self, state: SignalingState) {}
     fn on_data_channel(&mut self, data_channel: Box<RtcDataChannel<Self::DC>>) {}
 }
 
@@ -189,6 +218,11 @@ where
                 Some(RtcPeerConnection::<P, D>::gathering_state_cb),
             ))?;
 
+            check(sys::rtcSetSignalingStateChangeCallback(
+                id,
+                Some(RtcPeerConnection::<P, D>::signaling_state_cb),
+            ))?;
+
             check(sys::rtcSetDataChannelCallback(
                 id,
                 Some(RtcPeerConnection::<P, D>::data_channel_cb),
@@ -199,6 +233,7 @@ where
     }
 
     unsafe extern "C" fn local_description_cb(
+        _: i32,
         sdp: *const c_char,
         desc_type: *const c_char,
         ptr: *mut c_void,
@@ -235,6 +270,7 @@ where
     }
 
     unsafe extern "C" fn local_candidate_cb(
+        _: i32,
         cand: *const c_char,
         mid: *const c_char,
         ptr: *mut c_void,
@@ -249,16 +285,16 @@ where
         rtc_pc.pc.on_candidate(cand);
     }
 
-    unsafe extern "C" fn state_change_cb(state: sys::rtcState, ptr: *mut c_void) {
+    unsafe extern "C" fn state_change_cb(_: i32, state: sys::rtcState, ptr: *mut c_void) {
         let rtc_pc = &mut *(ptr as *mut RtcPeerConnection<P, D>);
 
         let state = ConnectionState::from_raw(state);
 
         let _guard = rtc_pc.lock.lock();
-        rtc_pc.pc.on_conn_state_change(state);
+        rtc_pc.pc.on_connection_state_change(state);
     }
 
-    unsafe extern "C" fn gathering_state_cb(state: sys::rtcState, ptr: *mut c_void) {
+    unsafe extern "C" fn gathering_state_cb(_: i32, state: sys::rtcState, ptr: *mut c_void) {
         let rtc_pc = &mut *(ptr as *mut RtcPeerConnection<P, D>);
 
         let state = GatheringState::from_raw(state);
@@ -267,7 +303,16 @@ where
         rtc_pc.pc.on_gathering_state_change(state);
     }
 
-    unsafe extern "C" fn data_channel_cb(id: i32, ptr: *mut c_void) {
+    unsafe extern "C" fn signaling_state_cb(_: i32, state: sys::rtcState, ptr: *mut c_void) {
+        let rtc_pc = &mut *(ptr as *mut RtcPeerConnection<P, D>);
+
+        let state = SignalingState::from_raw(state);
+
+        let _guard = rtc_pc.lock.lock();
+        rtc_pc.pc.on_signaling_state_change(state);
+    }
+
+    unsafe extern "C" fn data_channel_cb(_: i32, id: i32, ptr: *mut c_void) {
         let rtc_pc = &mut *(ptr as *mut RtcPeerConnection<P, D>);
 
         let guard = rtc_pc.lock.lock();
@@ -288,6 +333,35 @@ where
         }
     }
 
+    pub fn add_data_channel<C>(&mut self, label: &str, dc: C) -> Result<Box<RtcDataChannel<C>>>
+    where
+        C: DataChannel + Send,
+    {
+        let label = CString::new(label)?;
+        let id = check(unsafe { sys::rtcAddDataChannel(self.id, label.as_ptr()) })?;
+        RtcDataChannel::new(id, dc)
+    }
+
+    pub fn add_data_channel_ex<C>(
+        &mut self,
+        label: &str,
+        dc: C,
+        dc_init: &DataChannelInit,
+    ) -> Result<Box<RtcDataChannel<C>>>
+    where
+        C: DataChannel + Send,
+    {
+        let label = CString::new(label)?;
+        let id = check(unsafe {
+            sys::rtcAddDataChannelEx(self.id, label.as_ptr(), &dc_init.as_raw()?)
+        })?;
+        RtcDataChannel::new(id, dc)
+    }
+
+    /// Creates a boxed `[RtcDataChannel]`.
+    ///
+    /// This method is equivalent to calling `[add_data_channel]` and
+    /// `[set_local_description]`.
     pub fn create_data_channel<C>(&mut self, label: &str, dc: C) -> Result<Box<RtcDataChannel<C>>>
     where
         C: DataChannel + Send,
@@ -297,26 +371,26 @@ where
         RtcDataChannel::new(id, dc)
     }
 
-    pub fn create_data_channel_ext<'a, C, S>(
+    pub fn create_data_channel_ex<C>(
         &mut self,
         label: &str,
-        protocol: S,
-        reliability: &Reliability,
         dc: C,
+        dc_init: &DataChannelInit,
     ) -> Result<Box<RtcDataChannel<C>>>
     where
         C: DataChannel + Send,
-        S: Into<Option<&'a str>>,
     {
         let label = CString::new(label)?;
-        let protocol = match protocol.into() {
-            Some(protocol) => CString::new(protocol)?.as_ptr(),
-            None => ptr::null_mut(),
-        };
         let id = check(unsafe {
-            sys::rtcCreateDataChannelExt(self.id, label.as_ptr(), protocol, &reliability.as_raw())
+            sys::rtcCreateDataChannelEx(self.id, label.as_ptr(), &dc_init.as_raw()?)
         })?;
         RtcDataChannel::new(id, dc)
+    }
+
+    pub fn set_local_description(&mut self, desc_type: DescriptionType) -> Result<()> {
+        let desc_type = CString::new(desc_type.val())?;
+        check(unsafe { sys::rtcSetLocalDescription(self.id, desc_type.as_ptr()) })?;
+        Ok(())
     }
 
     pub fn set_remote_description(&mut self, sess_desc: &SessionDescription) -> Result<()> {
@@ -333,58 +407,116 @@ where
         Ok(())
     }
 
-    pub fn local_address(&self) -> String {
-        const BUF_SIZE: usize = 64;
-        let mut buf: Vec<u8> = vec![0; BUF_SIZE];
+    pub fn local_address(&self) -> Option<String> {
+        let buf_size =
+            check(unsafe { sys::rtcGetLocalAddress(self.id, ptr::null_mut() as *mut c_char, 0) })
+                .expect("Couldn't get buffer size") as usize;
+
+        let mut buf = vec![0; buf_size];
         match check(unsafe {
-            sys::rtcGetLocalAddress(self.id, buf.as_mut_ptr() as *mut c_char, BUF_SIZE as i32)
+            sys::rtcGetLocalAddress(self.id, buf.as_mut_ptr() as *mut c_char, buf_size as i32)
         }) {
             Ok(_) => match String::from_utf8(buf) {
-                Ok(label) => label.trim_matches(char::from(0)).to_string(),
+                Ok(local) => Some(local),
                 Err(err) => {
                     log::error!(
                         "Couldn't get RtcPeerConnection {:p} local_address: {}",
                         self,
                         err
                     );
-                    String::default()
+                    None
                 }
             },
+            Err(Error::NotAvailable) => None,
             Err(err) => {
-                log::error!(
+                log::warn!(
                     "Couldn't get RtcPeerConnection {:p} local_address: {}",
                     self,
                     err
                 );
-                String::default()
+                None
             }
         }
     }
 
-    pub fn remote_address(&self) -> String {
-        const BUF_SIZE: usize = 64;
-        let mut buf: Vec<u8> = vec![0; BUF_SIZE];
+    pub fn remote_address(&self) -> Option<String> {
+        let buf_size =
+            check(unsafe { sys::rtcGetRemoteAddress(self.id, ptr::null_mut() as *mut c_char, 0) })
+                .expect("Couldn't get buffer size") as usize;
+
+        let mut buf = vec![0; buf_size];
         match check(unsafe {
-            sys::rtcGetRemoteAddress(self.id, buf.as_mut_ptr() as *mut c_char, BUF_SIZE as i32)
+            sys::rtcGetRemoteAddress(self.id, buf.as_mut_ptr() as *mut c_char, buf_size as i32)
         }) {
             Ok(_) => match String::from_utf8(buf) {
-                Ok(label) => label.trim_matches(char::from(0)).to_string(),
+                Ok(remote) => Some(remote.trim_matches(char::from(0)).to_string()),
                 Err(err) => {
                     log::error!(
                         "Couldn't get RtcPeerConnection {:p} remote_address: {}",
                         self,
                         err
                     );
-                    String::default()
+                    None
                 }
             },
+            Err(Error::NotAvailable) => None,
             Err(err) => {
-                log::error!(
+                log::warn!(
                     "Couldn't get RtcPeerConnection {:p} remote_address: {}",
                     self,
                     err
                 );
-                String::default()
+                None
+            }
+        }
+    }
+
+    pub fn selected_candidate_pair(&self) -> Option<CandidatePair> {
+        let buf_size = check(unsafe {
+            sys::rtcGetSelectedCandidatePair(
+                self.id,
+                ptr::null_mut() as *mut c_char,
+                0,
+                ptr::null_mut() as *mut c_char,
+                0,
+            )
+        })
+        .expect("Couldn't get buffer size") as usize;
+
+        let mut local_buf = vec![0; buf_size];
+        let mut remote_buf = vec![0; buf_size];
+        match check(unsafe {
+            sys::rtcGetSelectedCandidatePair(
+                self.id,
+                local_buf.as_mut_ptr() as *mut c_char,
+                buf_size as i32,
+                remote_buf.as_mut_ptr() as *mut c_char,
+                buf_size as i32,
+            )
+        }) {
+            Ok(_) => {
+                let local = crate::ffi_string(&local_buf);
+                let remote = crate::ffi_string(&remote_buf);
+                match (local, remote) {
+                    (Ok(local), Ok(remote)) => Some(CandidatePair { local, remote }),
+                    (Ok(_), Err(err)) | (Err(err), Ok(_)) | (Err(err), Err(_)) => {
+                        log::error!(
+                            "Couldn't get RtcPeerConnection {:p} candidate_pair: {}",
+                            self,
+                            err
+                        );
+                        None
+                    }
+                }
+            }
+            Err(Error::NotAvailable) => None,
+            Err(err) => {
+                log::warn!(
+                    "Couldn't get RtcPeerConnection {:p} candidate_pair: {}",
+                    self,
+                    err
+                );
+                None
             }
         }
     }
