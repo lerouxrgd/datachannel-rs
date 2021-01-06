@@ -66,12 +66,27 @@ dc.send("Hello Peer!".as_bytes())?;
 
 Complete implementation example can be found in the [tests](tests).
 
-## Packaging
-
-By default [libdatachannel][] will be built and linked dynamically. However there is a
-`static` Cargo feature that will build and link it statically (with all its dependencies).
+## Building
 
 Note that `CMake` is required to compile [libdatachannel][] through
 [datachannel-sys](datachannel-sys).
+
+### Static build
+
+By default [libdatachannel][] will be built and linked dynamically. However there is a
+`static` Cargo feature that will build and link it statically (with all its
+dependencies, including `OpenSSL`).
+
+### Apple macOS
+
+You probably need to set the following environment variables if your build fails with an
+`OpenSSL` related error.
+
+```bash
+export OPENSSL_ROOT_DIR=/usr/local/Cellar/openssl@1.1/1.1.1i/
+export OPENSSL_LIBRARIES=/usr/local/Cellar/openssl@1.1/1.1.1i/lib
+```
+
+With the paths of your local `OpenSSL` installation.
 
 [libdatachannel]: https://github.com/paullouisageneau/libdatachannel

@@ -1,6 +1,11 @@
 use std::env;
 use std::path::PathBuf;
 
+fn env_var_rerun(name: &str) -> Result<String, env::VarError> {
+    println!("cargo:rerun-if-env-changed={}", name);
+    env::var(name)
+}
+
 fn main() {
     let out_dir = env::var("OUT_DIR").unwrap();
 
@@ -18,6 +23,15 @@ fn main() {
     config.out_dir(&out_dir);
     config.define("NO_WEBSOCKET", "ON");
     config.define("NO_EXAMPLES", "ON");
+
+    if let Ok(openssl_root_dir) = env_var_rerun("OPENSSL_ROOT_DIR") {
+        config.define("OPENSSL_ROOT_DIR", openssl_root_dir);
+    }
+
+    if let Ok(openssl_libraries) = env_var_rerun("OPENSSL_LIBRARIES") {
+        config.define("OPENSSL_LIBRARIES", openssl_libraries);
+    }
+
     config.build();
 
     if cfg!(feature = "static") {
