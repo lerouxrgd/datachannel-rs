@@ -9,8 +9,8 @@ use parking_lot::ReentrantMutex;
 use serde::{Deserialize, Serialize};
 use webrtc_sdp::{parse_sdp, SdpSession};
 
-use crate::config::Config;
-use crate::datachannel::{DataChannel, DataChannelInit, MakeDataChannel, RtcDataChannel};
+use crate::config::RtcConfig;
+use crate::datachannel::{DataChannelHandler, DataChannelInit, RtcDataChannel};
 use crate::error::{check, Error, Result};
 
 #[derive(Debug, PartialEq)]
@@ -161,8 +161,10 @@ pub struct IceCandidate {
 }
 
 #[allow(unused_variables)]
-pub trait PeerConnection {
+pub trait PeerConnectionHandler {
     type DC;
+
+    fn data_channel_handler(&mut self) -> Self::DC;
 
     fn on_description(&mut self, sess_desc: SessionDescription) {}
     fn on_candidate(&mut self, cand: IceCandidate) {}
@@ -172,20 +174,18 @@ pub trait PeerConnection {
     fn on_data_channel(&mut self, data_channel: Box<RtcDataChannel<Self::DC>>) {}
 }
 
-pub struct RtcPeerConnection<P, D> {
+pub struct RtcPeerConnection<P> {
     lock: ReentrantMutex<()>,
     id: i32,
-    pc: P,
-    dc: D,
+    pc_handler: P,
 }
 
-impl<P, D> RtcPeerConnection<P, D>
+impl<P> RtcPeerConnection<P>
 where
-    P: PeerConnection + Send,
-    P::DC: DataChannel + Send,
-    D: MakeDataChannel<P::DC> + Send,
+    P: PeerConnectionHandler + Send,
+    P::DC: DataChannelHandler + Send,
 {
-    pub fn new(config: &Config, pc: P, dc: D) -> Result<Box<Self>> {
+    pub fn new(config: &RtcConfig, pc_handler: P) -> Result<Box<Self>> {
         crate::ensure_logging();
 
         unsafe {
@@ -193,8 +193,7 @@ where
             let mut rtc_pc = Box::new(RtcPeerConnection {
                 lock: ReentrantMutex::new(()),
                 id,
-                pc,
-                dc,
+                pc_handler,
             });
             let ptr = &mut *rtc_pc;
 
@@ -202,32 +201,32 @@ where
 
             check(sys::rtcSetLocalDescriptionCallback(
                 id,
-                Some(RtcPeerConnection::<P, D>::local_description_cb),
+                Some(RtcPeerConnection::<P>::local_description_cb),
             ))?;
 
             check(sys::rtcSetLocalCandidateCallback(
                 id,
-                Some(RtcPeerConnection::<P, D>::local_candidate_cb),
+                Some(RtcPeerConnection::<P>::local_candidate_cb),
             ))?;
 
             check(sys::rtcSetStateChangeCallback(
                 id,
-                Some(RtcPeerConnection::<P, D>::state_change_cb),
+                Some(RtcPeerConnection::<P>::state_change_cb),
             ))?;
 
             check(sys::rtcSetGatheringStateChangeCallback(
                 id,
-                Some(RtcPeerConnection::<P, D>::gathering_state_cb),
+                Some(RtcPeerConnection::<P>::gathering_state_cb),
             ))?;
 
             check(sys::rtcSetSignalingStateChangeCallback(
                 id,
-                Some(RtcPeerConnection::<P, D>::signaling_state_cb),
+                Some(RtcPeerConnection::<P>::signaling_state_cb),
             ))?;
 
             check(sys::rtcSetDataChannelCallback(
                 id,
-                Some(RtcPeerConnection::<P, D>::data_channel_cb),
+                Some(RtcPeerConnection::<P>::data_channel_cb),
             ))?;
 
             Ok(rtc_pc)
@@ -240,7 +239,7 @@ where
         desc_type: *const c_char,
         ptr: *mut c_void,
     ) {
-        let rtc_pc = &mut *(ptr as *mut RtcPeerConnection<P, D>);
+        let rtc_pc = &mut *(ptr as *mut RtcPeerConnection<P>);
 
         let sdp = CStr::from_ptr(sdp).to_string_lossy();
         let sdp = match parse_sdp(&sdp, false) {
@@ -268,7 +267,7 @@ where
         let sess_desc = SessionDescription { sdp, desc_type };
 
         let _guard = rtc_pc.lock.lock();
-        rtc_pc.pc.on_description(sess_desc);
+        rtc_pc.pc_handler.on_description(sess_desc);
     }
 
     unsafe extern "C" fn local_candidate_cb(
@@ -277,54 +276,54 @@ where
         mid: *const c_char,
         ptr: *mut c_void,
     ) {
-        let rtc_pc = &mut *(ptr as *mut RtcPeerConnection<P, D>);
+        let rtc_pc = &mut *(ptr as *mut RtcPeerConnection<P>);
 
         let candidate = CStr::from_ptr(cand).to_string_lossy().to_string();
         let mid = CStr::from_ptr(mid).to_string_lossy().to_string();
         let cand = IceCandidate { candidate, mid };
 
         let _guard = rtc_pc.lock.lock();
-        rtc_pc.pc.on_candidate(cand);
+        rtc_pc.pc_handler.on_candidate(cand);
     }
 
     unsafe extern "C" fn state_change_cb(_: i32, state: sys::rtcState, ptr: *mut c_void) {
-        let rtc_pc = &mut *(ptr as *mut RtcPeerConnection<P, D>);
+        let rtc_pc = &mut *(ptr as *mut RtcPeerConnection<P>);
 
         let state = ConnectionState::from_raw(state);
 
         let _guard = rtc_pc.lock.lock();
-        rtc_pc.pc.on_connection_state_change(state);
+        rtc_pc.pc_handler.on_connection_state_change(state);
     }
 
     unsafe extern "C" fn gathering_state_cb(_: i32, state: sys::rtcState, ptr: *mut c_void) {
-        let rtc_pc = &mut *(ptr as *mut RtcPeerConnection<P, D>);
+        let rtc_pc = &mut *(ptr as *mut RtcPeerConnection<P>);
 
         let state = GatheringState::from_raw(state);
 
         let _guard = rtc_pc.lock.lock();
-        rtc_pc.pc.on_gathering_state_change(state);
+        rtc_pc.pc_handler.on_gathering_state_change(state);
     }
 
     unsafe extern "C" fn signaling_state_cb(_: i32, state: sys::rtcState, ptr: *mut c_void) {
-        let rtc_pc = &mut *(ptr as *mut RtcPeerConnection<P, D>);
+        let rtc_pc = &mut *(ptr as *mut RtcPeerConnection<P>);
 
         let state = SignalingState::from_raw(state);
 
         let _guard = rtc_pc.lock.lock();
-        rtc_pc.pc.on_signaling_state_change(state);
+        rtc_pc.pc_handler.on_signaling_state_change(state);
     }
 
     unsafe extern "C" fn data_channel_cb(_: i32, id: i32, ptr: *mut c_void) {
-        let rtc_pc = &mut *(ptr as *mut RtcPeerConnection<P, D>);
+        let rtc_pc = &mut *(ptr as *mut RtcPeerConnection<P>);
 
         let guard = rtc_pc.lock.lock();
-        let dc = rtc_pc.dc.make();
+        let dc = rtc_pc.pc_handler.data_channel_handler();
         drop(guard);
 
         match RtcDataChannel::new(id, dc) {
             Ok(dc) => {
                 let _guard = rtc_pc.lock.lock();
-                rtc_pc.pc.on_data_channel(dc);
+                rtc_pc.pc_handler.on_data_channel(dc);
             }
             Err(err) => log::error!(
                 "Couldn't create RtcDataChannel with id={} from RtcPeerConnection {:p}: {}",
@@ -337,7 +336,7 @@ where
 
     pub fn add_data_channel<C>(&mut self, label: &str, dc: C) -> Result<Box<RtcDataChannel<C>>>
     where
-        C: DataChannel + Send,
+        C: DataChannelHandler + Send,
     {
         let label = CString::new(label)?;
         let id = check(unsafe { sys::rtcAddDataChannel(self.id, label.as_ptr()) })?;
@@ -351,7 +350,7 @@ where
         dc_init: &DataChannelInit,
     ) -> Result<Box<RtcDataChannel<C>>>
     where
-        C: DataChannel + Send,
+        C: DataChannelHandler + Send,
     {
         let label = CString::new(label)?;
         let id = check(unsafe {
@@ -366,7 +365,7 @@ where
     /// `[set_local_description]`.
     pub fn create_data_channel<C>(&mut self, label: &str, dc: C) -> Result<Box<RtcDataChannel<C>>>
     where
-        C: DataChannel + Send,
+        C: DataChannelHandler + Send,
     {
         let label = CString::new(label)?;
         let id = check(unsafe { sys::rtcCreateDataChannel(self.id, label.as_ptr()) })?;
@@ -380,7 +379,7 @@ where
         dc_init: &DataChannelInit,
     ) -> Result<Box<RtcDataChannel<C>>>
     where
-        C: DataChannel + Send,
+        C: DataChannelHandler + Send,
     {
         let label = CString::new(label)?;
         let id = check(unsafe {
@@ -524,7 +523,7 @@ where
     }
 }
 
-impl<P, D> Drop for RtcPeerConnection<P, D> {
+impl<P> Drop for RtcPeerConnection<P> {
     fn drop(&mut self) {
         match check(unsafe { sys::rtcDeletePeerConnection(self.id) }) {
             Err(err) => log::error!(

@@ -58,13 +58,11 @@ pub fn cleanup() {
     unsafe { datachannel_sys::rtcCleanup() };
 }
 
-pub use crate::config::Config;
-pub use crate::datachannel::{
-    DataChannel, DataChannelInit, MakeDataChannel, Reliability, RtcDataChannel,
-};
+pub use crate::config::RtcConfig;
+pub use crate::datachannel::{DataChannelHandler, DataChannelInit, Reliability, RtcDataChannel};
 pub use crate::peerconnection::{
-    CandidatePair, ConnectionState, DescriptionType, GatheringState, IceCandidate, PeerConnection,
-    RtcPeerConnection, SessionDescription,
+    CandidatePair, ConnectionState, DescriptionType, GatheringState, IceCandidate,
+    PeerConnectionHandler, RtcPeerConnection, SessionDescription,
 };
 
 pub use webrtc_sdp as sdp;

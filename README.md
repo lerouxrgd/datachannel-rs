@@ -9,14 +9,14 @@ Rust wrappers for [libdatachannel][], a WebRTC Data Channels standalone implemen
 
 ## Usage
 
-This crate provides two traits that end user must implement, `DataChannel` and
-`PeerConnection`, that define all available callback methods. Note that all methods have
-a default no-operation implementation.
+This crate provides two traits that end user must implement, `DataChannelHandler` and
+`PeerConnectionHandler`, which defined all callbacks for `RtcPeerConnection` and
+`RtcDataChannel` structs respectively.
 
 Aforementioned traits are defined as follows:
 
 ```rust
-pub trait DataChannel {
+pub trait DataChannelHandler {
     fn on_open(&mut self) {}
     fn on_closed(&mut self) {}
     fn on_error(&mut self, err: &str) {}
@@ -25,8 +25,10 @@ pub trait DataChannel {
     fn on_available(&mut self) {}
 }
 
-pub trait PeerConnection {
+pub trait PeerConnectionHandler {
     type DC;
+
+    fn data_channel_handler(&mut self) -> Self::DC;
 
     fn on_description(&mut self, sess_desc: SessionDescription) {}
     fn on_candidate(&mut self, cand: IceCandidate) {}
@@ -36,31 +38,53 @@ pub trait PeerConnection {
 }
 ```
 
-Traits implementations are meant to be used through `RtcPeerConnection` and
-`RtcDataChannel` structs.
+Note that all `on_*` methods have a default no-operation implementation.
 
-The main struct, `RtcPeerconnection`, takes a `Config` (which defines ICE servers) and a
-`MakeDataChannel` instance (a factory trait used internally for `on_data_channel`
-callback). Note that this factory trait has a straightforward blanket implementation for
-`Clone` types.
+The main struct, `RtcPeerconnection`, takes a `RtcConfig` (which defines ICE servers)
+and a instance of `PeerConnectionHandler`.
 
 Here is the basic workflow:
 
 ```rust
-use datachannel::{Config, DataChannel, PeerConnection, RtcPeerConnection};
+use datachannel::{DataChannelHandler, PeerConnectionHandler, RtcConfig, RtcPeerConnection};
 
-struct Chan;
-impl DataChannel for Chan {}
+struct MyChannel;
 
-struct Conn;
-impl PeerConnection for Conn {}
+impl DataChannelHandler for MyChannel {
+    fn on_open(&mut self) {
+        // TODO: notify that the data channel is ready (optional)
+    }
 
-let ice_servers = vec!["stun:stun.l.google.com:19302".to_string()];
-let conf = Config::new(ice_servers);
+    fn on_message(&mut self, msg: &[u8]) {
+        // TODO: process the received message
+    }
+}
 
-let mut pc = RtcPeerConnection::new(&conf, Conn, || Chan)?;
+struct MyConnection;
 
-let mut dc = pc.create_data_channel("test-dc", Chan)?;
+impl PeerConnectionHandler for MyConnection {
+    type DC = MyChannel;
+
+    /// Used to create the `RtcDataChannel` received through `on_data_channel`.
+    fn data_channel_handler(&mut self) -> Self::DC {
+        MyChannel
+    }
+
+    fn on_data_channel(&mut self, mut dc: Box<RtcDataChannel<Self::DC>>) {
+        // TODO: store `dc` to keep receiving its messages (otherwise it will be dropped)
+    }
+}
+
+let ice_servers = vec!["stun:stun.l.google.com:19302"];
+let conf = RtcConfig::new(&ice_servers);
+
+let mut pc = RtcPeerConnection::new(&conf, MyConnection)?;
+
+let mut dc = pc.create_data_channel("test-dc", MyChannel)?;
+// TODO: exchange `SessionDescription` and `IceCandidate` with remote peer
+// TODO: wait for `dc` to be opened (should be signaled through `on_open`)
+// ...
+// Then send a message
 dc.send("Hello Peer!".as_bytes())?;
 ```
 

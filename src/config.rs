@@ -6,26 +6,26 @@ use derivative::Derivative;
 
 #[derive(Derivative)]
 #[derivative(Debug)]
-pub struct Config {
+pub struct RtcConfig {
     pub ice_servers: Vec<CString>,
     #[derivative(Debug = "ignore")]
-    pub ice_servers_ptrs: Vec<*const c_char>,
+    ice_servers_ptrs: Vec<*const c_char>,
     pub port_range_begin: u16,
     pub port_range_end: u16,
 }
 
-unsafe impl Send for Config {}
-unsafe impl Sync for Config {}
+unsafe impl Send for RtcConfig {}
+unsafe impl Sync for RtcConfig {}
 
-impl Config {
-    pub fn new(ice_servers: Vec<String>) -> Self {
+impl RtcConfig {
+    pub fn new<S: AsRef<str>>(ice_servers: &[S]) -> Self {
         let mut ice_servers = ice_servers
             .into_iter()
-            .map(|server| CString::new(server.as_str()).unwrap())
+            .map(|server| CString::new(server.as_ref()).unwrap())
             .collect::<Vec<_>>();
         ice_servers.shrink_to_fit();
         let ice_servers_ptrs: Vec<*const c_char> = ice_servers.iter().map(|s| s.as_ptr()).collect();
-        Config {
+        RtcConfig {
             ice_servers,
             ice_servers_ptrs,
             port_range_begin: 1024,
@@ -53,11 +53,11 @@ impl Config {
     }
 }
 
-impl Clone for Config {
+impl Clone for RtcConfig {
     fn clone(&self) -> Self {
         let ice_servers = self.ice_servers.clone();
         let ice_servers_ptrs: Vec<*const c_char> = ice_servers.iter().map(|s| s.as_ptr()).collect();
-        Config {
+        RtcConfig {
             ice_servers,
             ice_servers_ptrs,
             port_range_begin: self.port_range_begin,

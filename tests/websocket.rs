@@ -21,12 +21,12 @@ use tokio::spawn;
 use tokio::time::timeout;
 
 use datachannel::{
-    Config, DataChannel, DataChannelInit, DescriptionType, IceCandidate, PeerConnection,
-    Reliability, RtcDataChannel, RtcPeerConnection, SessionDescription,
+    DataChannelHandler, DataChannelInit, DescriptionType, IceCandidate, PeerConnectionHandler,
+    Reliability, RtcConfig, RtcDataChannel, RtcPeerConnection, SessionDescription,
 };
 
 #[derive(Debug, Serialize, Deserialize)]
-struct PeerMsg {
+struct ConnectionMsg {
     dest_id: Uuid,
     kind: MsgKind,
 }
@@ -96,10 +96,10 @@ async fn handle_new_peer(peers: PeerMap, stream: TcpStream) {
                 continue;
             }
 
-            let mut peer_msg = match serde_json::from_slice::<PeerMsg>(&msg.into_data()) {
+            let mut peer_msg = match serde_json::from_slice::<ConnectionMsg>(&msg.into_data()) {
                 Ok(peer_msg) => peer_msg,
                 Err(err) => {
-                    log::error!("Invalid PeerMsg: {}", err);
+                    log::error!("Invalid ConnectionMsg: {}", err);
                     continue;
                 }
             };
@@ -135,12 +135,22 @@ struct DataPipe {
 }
 
 impl DataPipe {
-    fn new(output: chan::Sender<String>, ready: Option<chan::Sender<()>>) -> Self {
-        DataPipe { output, ready }
+    fn new_sender(output: chan::Sender<String>, ready: chan::Sender<()>) -> Self {
+        DataPipe {
+            output,
+            ready: Some(ready),
+        }
+    }
+
+    fn new_receiver(output: chan::Sender<String>) -> Self {
+        DataPipe {
+            output,
+            ready: None,
+        }
     }
 }
 
-impl DataChannel for DataPipe {
+impl DataChannelHandler for DataPipe {
     fn on_open(&mut self) {
         if let Some(ready) = &mut self.ready {
             ready.try_send(()).ok();
@@ -157,25 +167,31 @@ struct WsConn {
     peer_id: Uuid,
     dest_id: Uuid,
     signaling: chan::Sender<Message>,
+    pipe: DataPipe,
     dc: Option<Box<RtcDataChannel<DataPipe>>>,
 }
 
 impl WsConn {
-    fn new(peer_id: Uuid, dest_id: Uuid, signaling: chan::Sender<Message>) -> Self {
+    fn new(peer_id: Uuid, dest_id: Uuid, pipe: DataPipe, signaling: chan::Sender<Message>) -> Self {
         WsConn {
             peer_id,
             dest_id,
             signaling,
+            pipe,
             dc: None,
         }
     }
 }
 
-impl PeerConnection for WsConn {
+impl PeerConnectionHandler for WsConn {
     type DC = DataPipe;
 
+    fn data_channel_handler(&mut self) -> Self::DC {
+        self.pipe.clone()
+    }
+
     fn on_description(&mut self, sess_desc: SessionDescription) {
-        let peer_msg = PeerMsg {
+        let peer_msg = ConnectionMsg {
             dest_id: self.dest_id,
             kind: MsgKind::Description(sess_desc),
         };
@@ -186,7 +202,7 @@ impl PeerConnection for WsConn {
     }
 
     fn on_candidate(&mut self, cand: IceCandidate) {
-        let peer_msg = PeerMsg {
+        let peer_msg = ConnectionMsg {
             dest_id: self.dest_id,
             kind: MsgKind::Candidate(cand),
         };
@@ -210,15 +226,15 @@ impl PeerConnection for WsConn {
     }
 }
 
-type ConnectionMap = Arc<Mutex<HashMap<Uuid, Box<RtcPeerConnection<WsConn, DataPipe>>>>>;
+type ConnectionMap = Arc<Mutex<HashMap<Uuid, Box<RtcPeerConnection<WsConn>>>>>;
 type ChannelMap = Arc<Mutex<HashMap<Uuid, Box<RtcDataChannel<DataPipe>>>>>;
 
 async fn run_client(peer_id: Uuid, input: chan::Receiver<Uuid>, output: chan::Sender<String>) {
     let conns = ConnectionMap::new(Mutex::new(HashMap::new()));
     let chans = ChannelMap::new(Mutex::new(HashMap::new()));
 
-    let ice_servers = vec!["stun:stun.l.google.com:19302".to_string()];
-    let conf = Config::new(ice_servers);
+    let ice_servers = vec!["stun:stun.l.google.com:19302"];
+    let conf = RtcConfig::new(&ice_servers);
 
     let url = format!("ws://localhost:8989/{:?}", peer_id);
     let (ws_stream, _) = connect_async(url).await.expect("Failed to connect");
@@ -233,17 +249,17 @@ async fn run_client(peer_id: Uuid, input: chan::Receiver<Uuid>, output: chan::Se
         };
         log::info!("Peer {:?} sends data", &peer_id);
 
-        let pipe = DataPipe::new(output.clone(), None);
-        let conn = WsConn::new(peer_id, dest_id, tx_ws.clone());
-        let pc = RtcPeerConnection::new(&conf, conn, pipe).unwrap();
+        let pipe = DataPipe::new_receiver(output.clone());
+        let conn = WsConn::new(peer_id, dest_id, pipe, tx_ws.clone());
+        let pc = RtcPeerConnection::new(&conf, conn).unwrap();
         conns.lock().unwrap().insert(dest_id, pc);
 
         let (tx_ready, mut rx_ready) = chan::bounded(1);
-        let pipe = DataPipe::new(output.clone(), Some(tx_ready));
+        let pipe = DataPipe::new_sender(output.clone(), tx_ready);
+
         let opts = DataChannelInit::default()
             .protocol("prototest")
             .reliability(Reliability::default().unordered());
-
         let mut dc = conns
             .lock()
             .unwrap()
@@ -251,10 +267,11 @@ async fn run_client(peer_id: Uuid, input: chan::Receiver<Uuid>, output: chan::Se
             .unwrap()
             .create_data_channel_ex("sender", pipe, &opts)
             .unwrap();
-        rx_ready.next().await;
 
+        rx_ready.next().await;
         let data = format!("Hello from {:?}", peer_id);
         dc.send(data.as_bytes()).ok();
+
         chans.lock().unwrap().insert(dest_id, dc);
     };
 
@@ -266,10 +283,10 @@ async fn run_client(peer_id: Uuid, input: chan::Receiver<Uuid>, output: chan::Se
                 continue;
             }
 
-            let peer_msg = match serde_json::from_slice::<PeerMsg>(&msg.into_data()) {
+            let peer_msg = match serde_json::from_slice::<ConnectionMsg>(&msg.into_data()) {
                 Ok(peer_msg) => peer_msg,
                 Err(err) => {
-                    log::error!("Invalid PeerMsg: {}", err);
+                    log::error!("Invalid ConnectionMsg: {}", err);
                     continue;
                 }
             };
@@ -284,9 +301,9 @@ async fn run_client(peer_id: Uuid, input: chan::Receiver<Uuid>, output: chan::Se
                     {
                         log::info!("Client {:?} answering to {:?}", &peer_id, &dest_id);
 
-                        let pipe = DataPipe::new(output.clone(), None);
-                        let conn = WsConn::new(peer_id, dest_id, tx_ws.clone());
-                        let pc = RtcPeerConnection::new(&conf, conn, pipe).unwrap();
+                        let pipe = DataPipe::new_receiver(output.clone());
+                        let conn = WsConn::new(peer_id, dest_id, pipe, tx_ws.clone());
+                        let pc = RtcPeerConnection::new(&conf, conn).unwrap();
 
                         locked.insert(dest_id, pc);
                         locked.get_mut(&dest_id).unwrap()

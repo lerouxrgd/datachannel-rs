@@ -103,24 +103,8 @@ impl DataChannelInit {
     }
 }
 
-pub trait MakeDataChannel<D>
-where
-    D: DataChannel + Send,
-{
-    fn make(&mut self) -> D;
-}
-
-impl<D> MakeDataChannel<D> for D
-where
-    D: DataChannel + Send + Clone,
-{
-    fn make(&mut self) -> D {
-        self.clone()
-    }
-}
-
 #[allow(unused_variables)]
-pub trait DataChannel {
+pub trait DataChannelHandler {
     fn on_open(&mut self) {}
     fn on_closed(&mut self) {}
     fn on_error(&mut self, err: &str) {}
@@ -131,16 +115,16 @@ pub trait DataChannel {
 
 pub struct RtcDataChannel<D> {
     id: i32,
-    dc: D,
+    dc_handler: D,
 }
 
 impl<D> RtcDataChannel<D>
 where
-    D: DataChannel + Send,
+    D: DataChannelHandler + Send,
 {
-    pub(crate) fn new(id: i32, dc: D) -> Result<Box<Self>> {
+    pub(crate) fn new(id: i32, dc_handler: D) -> Result<Box<Self>> {
         unsafe {
-            let mut rtc_dc = Box::new(RtcDataChannel { id, dc });
+            let mut rtc_dc = Box::new(RtcDataChannel { id, dc_handler });
             let ptr = &mut *rtc_dc;
 
             sys::rtcSetUserPointer(id, ptr as *mut _ as *mut c_void);
@@ -181,18 +165,18 @@ where
 
     unsafe extern "C" fn open_cb(_: i32, ptr: *mut c_void) {
         let rtc_dc = &mut *(ptr as *mut RtcDataChannel<D>);
-        rtc_dc.dc.on_open()
+        rtc_dc.dc_handler.on_open()
     }
 
     unsafe extern "C" fn closed_cb(_: i32, ptr: *mut c_void) {
         let rtc_dc = &mut *(ptr as *mut RtcDataChannel<D>);
-        rtc_dc.dc.on_closed()
+        rtc_dc.dc_handler.on_closed()
     }
 
     unsafe extern "C" fn error_cb(_: i32, err: *const c_char, ptr: *mut c_void) {
         let rtc_dc = &mut *(ptr as *mut RtcDataChannel<D>);
         let err = CStr::from_ptr(err).to_string_lossy();
-        rtc_dc.dc.on_error(&err)
+        rtc_dc.dc_handler.on_error(&err)
     }
 
     unsafe extern "C" fn message_cb(_: i32, msg: *const c_char, size: i32, ptr: *mut c_void) {
@@ -202,17 +186,17 @@ where
         } else {
             slice::from_raw_parts(msg as *const u8, size as usize)
         };
-        rtc_dc.dc.on_message(msg)
+        rtc_dc.dc_handler.on_message(msg)
     }
 
     unsafe extern "C" fn buffered_amount_low_cb(_: i32, ptr: *mut c_void) {
         let rtc_dc = &mut *(ptr as *mut RtcDataChannel<D>);
-        rtc_dc.dc.on_buffered_amount_low()
+        rtc_dc.dc_handler.on_buffered_amount_low()
     }
 
     unsafe extern "C" fn available_cb(_: i32, ptr: *mut c_void) {
         let rtc_dc = &mut *(ptr as *mut RtcDataChannel<D>);
-        rtc_dc.dc.on_available()
+        rtc_dc.dc_handler.on_available()
     }
 
     pub fn send(&mut self, msg: &[u8]) -> Result<()> {
