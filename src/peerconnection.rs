@@ -89,6 +89,7 @@ pub struct SessionDescription {
     #[derivative(Debug(format_with = "fmt_sdp"))]
     #[serde(with = "serde_sdp")]
     pub sdp: SdpSession,
+    #[serde(rename = "type")]
     pub desc_type: DescriptionType,
 }
 
@@ -155,6 +156,7 @@ impl DescriptionType {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct IceCandidate {
     pub candidate: String,
+    #[serde(rename = "sdpMid")]
     pub mid: String,
 }
 
