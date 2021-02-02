@@ -45,7 +45,7 @@ impl RtcConfig {
 
     pub(crate) fn as_raw(&self) -> sys::rtcConfiguration {
         sys::rtcConfiguration {
-            iceServers: self.ice_servers.as_ptr() as *mut *const c_char,
+            iceServers: self.ice_servers_ptrs.as_ptr() as *mut *const c_char,
             iceServersCount: self.ice_servers.len() as i32,
             portRangeBegin: self.port_range_begin,
             portRangeEnd: self.port_range_end,
