@@ -10,6 +10,7 @@ pub struct RtcConfig {
     pub ice_servers: Vec<CString>,
     #[derivative(Debug = "ignore")]
     ice_servers_ptrs: Vec<*const c_char>,
+    pub enable_ice_tcp: bool,
     pub port_range_begin: u16,
     pub port_range_end: u16,
 }
@@ -28,9 +29,15 @@ impl RtcConfig {
         RtcConfig {
             ice_servers,
             ice_servers_ptrs,
+            enable_ice_tcp: false,
             port_range_begin: 1024,
             port_range_end: 65535,
         }
+    }
+
+    pub fn enable_ice_tcp(mut self) -> Self {
+        self.enable_ice_tcp = true;
+        self
     }
 
     pub fn port_range_begin(mut self, port_range_begin: u16) -> Self {
@@ -47,6 +54,7 @@ impl RtcConfig {
         sys::rtcConfiguration {
             iceServers: self.ice_servers_ptrs.as_ptr() as *mut *const c_char,
             iceServersCount: self.ice_servers.len() as i32,
+            enableIceTcp: self.enable_ice_tcp,
             portRangeBegin: self.port_range_begin,
             portRangeEnd: self.port_range_end,
         }
@@ -60,6 +68,7 @@ impl Clone for RtcConfig {
         RtcConfig {
             ice_servers,
             ice_servers_ptrs,
+            enable_ice_tcp: self.enable_ice_tcp,
             port_range_begin: self.port_range_begin,
             port_range_end: self.port_range_end,
         }
