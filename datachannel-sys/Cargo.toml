@@ -10,6 +10,7 @@ categories = ["network-programming"]
 license = "LGPL-2.1"
 
 exclude = [
+  "libdatachannel/examples",
   "libdatachannel/deps/json",
   "libdatachannel/deps/usrsctp/fuzzer",
 ]
