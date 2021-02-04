@@ -162,16 +162,16 @@ pub struct IceCandidate {
 
 #[allow(unused_variables)]
 pub trait PeerConnectionHandler {
-    type DC;
+    type DCH;
 
-    fn data_channel_handler(&mut self) -> Self::DC;
+    fn data_channel_handler(&mut self) -> Self::DCH;
 
     fn on_description(&mut self, sess_desc: SessionDescription) {}
     fn on_candidate(&mut self, cand: IceCandidate) {}
     fn on_connection_state_change(&mut self, state: ConnectionState) {}
     fn on_gathering_state_change(&mut self, state: GatheringState) {}
     fn on_signaling_state_change(&mut self, state: SignalingState) {}
-    fn on_data_channel(&mut self, data_channel: Box<RtcDataChannel<Self::DC>>) {}
+    fn on_data_channel(&mut self, data_channel: Box<RtcDataChannel<Self::DCH>>) {}
 }
 
 pub struct RtcPeerConnection<P> {
@@ -183,7 +183,7 @@ pub struct RtcPeerConnection<P> {
 impl<P> RtcPeerConnection<P>
 where
     P: PeerConnectionHandler + Send,
-    P::DC: DataChannelHandler + Send,
+    P::DCH: DataChannelHandler + Send,
 {
     pub fn new(config: &RtcConfig, pc_handler: P) -> Result<Box<Self>> {
         crate::ensure_logging();

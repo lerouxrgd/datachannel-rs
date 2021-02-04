@@ -185,9 +185,9 @@ impl WsConn {
 }
 
 impl PeerConnectionHandler for WsConn {
-    type DC = DataPipe;
+    type DCH = DataPipe;
 
-    fn data_channel_handler(&mut self) -> Self::DC {
+    fn data_channel_handler(&mut self) -> Self::DCH {
         self.pipe.clone()
     }
 

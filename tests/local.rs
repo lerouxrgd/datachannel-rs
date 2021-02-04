@@ -78,7 +78,7 @@ impl LocalConn {
 }
 
 impl PeerConnectionHandler for LocalConn {
-    type DC = Pong;
+    type DCH = Pong;
 
     fn data_channel_handler(&mut self) -> Pong {
         self.pong.clone()

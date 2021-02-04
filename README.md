@@ -26,15 +26,15 @@ pub trait DataChannelHandler {
 }
 
 pub trait PeerConnectionHandler {
-    type DC;
+    type DCH;
 
-    fn data_channel_handler(&mut self) -> Self::DC;
+    fn data_channel_handler(&mut self) -> Self::DCH;
 
     fn on_description(&mut self, sess_desc: SessionDescription) {}
     fn on_candidate(&mut self, cand: IceCandidate) {}
     fn on_connection_state_change(&mut self, state: ConnectionState) {}
     fn on_gathering_state_change(&mut self, state: GatheringState) {}
-    fn on_data_channel(&mut self, data_channel: Box<RtcDataChannel<Self::DC>>) {}
+    fn on_data_channel(&mut self, data_channel: Box<RtcDataChannel<Self::DCH>>) {}
 }
 ```
 
@@ -63,14 +63,14 @@ impl DataChannelHandler for MyChannel {
 struct MyConnection;
 
 impl PeerConnectionHandler for MyConnection {
-    type DC = MyChannel;
+    type DCH = MyChannel;
 
     /// Used to create the `RtcDataChannel` received through `on_data_channel`.
-    fn data_channel_handler(&mut self) -> Self::DC {
+    fn data_channel_handler(&mut self) -> Self::DCH {
         MyChannel
     }
 
-    fn on_data_channel(&mut self, mut dc: Box<RtcDataChannel<Self::DC>>) {
+    fn on_data_channel(&mut self, mut dc: Box<RtcDataChannel<Self::DCH>>) {
         // TODO: store `dc` to keep receiving its messages (otherwise it will be dropped)
     }
 }
