@@ -408,6 +408,72 @@ where
         Ok(())
     }
 
+    pub fn local_description(&self) -> Option<String> {
+        let buf_size = check(unsafe {
+            sys::rtcGetLocalDescription(self.id, ptr::null_mut() as *mut c_char, 0)
+        })
+        .expect("Couldn't get buffer size") as usize;
+
+        let mut buf = vec![0; buf_size];
+        match check(unsafe {
+            sys::rtcGetLocalDescription(self.id, buf.as_mut_ptr() as *mut c_char, buf_size as i32)
+        }) {
+            Ok(_) => match String::from_utf8(buf) {
+                Ok(local) => Some(local.trim_matches(char::from(0)).to_string()),
+                Err(err) => {
+                    log::error!(
+                        "Couldn't get RtcPeerConnection {:p} local_description: {}",
+                        self,
+                        err
+                    );
+                    None
+                }
+            },
+            Err(Error::NotAvailable) => None,
+            Err(err) => {
+                log::warn!(
+                    "Couldn't get RtcPeerConnection {:p} local_description: {}",
+                    self,
+                    err
+                );
+                None
+            }
+        }
+    }
+
+    pub fn remote_description(&self) -> Option<String> {
+        let buf_size = check(unsafe {
+            sys::rtcGetRemoteDescription(self.id, ptr::null_mut() as *mut c_char, 0)
+        })
+        .expect("Couldn't get buffer size") as usize;
+
+        let mut buf = vec![0; buf_size];
+        match check(unsafe {
+            sys::rtcGetRemoteDescription(self.id, buf.as_mut_ptr() as *mut c_char, buf_size as i32)
+        }) {
+            Ok(_) => match String::from_utf8(buf) {
+                Ok(remote) => Some(remote.trim_matches(char::from(0)).to_string()),
+                Err(err) => {
+                    log::error!(
+                        "Couldn't get RtcPeerConnection {:p} remote_description: {}",
+                        self,
+                        err
+                    );
+                    None
+                }
+            },
+            Err(Error::NotAvailable) => None,
+            Err(err) => {
+                log::warn!(
+                    "Couldn't get RtcPeerConnection {:p} remote_description: {}",
+                    self,
+                    err
+                );
+                None
+            }
+        }
+    }
+
     pub fn local_address(&self) -> Option<String> {
         let buf_size =
             check(unsafe { sys::rtcGetLocalAddress(self.id, ptr::null_mut() as *mut c_char, 0) })
