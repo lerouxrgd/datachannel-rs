@@ -90,7 +90,7 @@ pub struct SessionDescription {
     #[serde(with = "serde_sdp")]
     pub sdp: SdpSession,
     #[serde(rename = "type")]
-    pub desc_type: DescriptionType,
+    pub sdp_type: SdpType,
 }
 
 fn fmt_sdp(sdp: &SdpSession, f: &mut fmt::Formatter) -> std::result::Result<(), fmt::Error> {
@@ -125,19 +125,19 @@ mod serde_sdp {
 
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
-pub enum DescriptionType {
+pub enum SdpType {
     Answer,
     Offer,
-    PrAnswer,
+    Pranswer,
     Rollback,
 }
 
-impl DescriptionType {
+impl SdpType {
     fn from(val: &str) -> Result<Self> {
         match val {
             "answer" => Ok(Self::Answer),
             "offer" => Ok(Self::Offer),
-            "pranswer" => Ok(Self::PrAnswer),
+            "pranswer" => Ok(Self::Pranswer),
             "rollback" => Ok(Self::Rollback),
             _ => Err(Error::InvalidArg),
         }
@@ -147,7 +147,7 @@ impl DescriptionType {
         match self {
             Self::Answer => "answer,",
             Self::Offer => "offer,",
-            Self::PrAnswer => "pranswer,",
+            Self::Pranswer => "pranswer,",
             Self::Rollback => "rollback,",
         }
     }
@@ -236,7 +236,7 @@ where
     unsafe extern "C" fn local_description_cb(
         _: i32,
         sdp: *const c_char,
-        desc_type: *const c_char,
+        sdp_type: *const c_char,
         ptr: *mut c_void,
     ) {
         let rtc_pc = &mut *(ptr as *mut RtcPeerConnection<P>);
@@ -251,20 +251,17 @@ where
             }
         };
 
-        let desc_type = CStr::from_ptr(desc_type).to_string_lossy();
-        let desc_type = match DescriptionType::from(&desc_type) {
-            Ok(desc_type) => desc_type,
+        let sdp_type = CStr::from_ptr(sdp_type).to_string_lossy();
+        let sdp_type = match SdpType::from(&sdp_type) {
+            Ok(sdp_type) => sdp_type,
             Err(_) => {
-                log::warn!(
-                    "Ignoring session with invalid DescriptionType: {}",
-                    desc_type
-                );
+                log::warn!("Ignoring session with invalid SdpType: {}", sdp_type);
                 log::debug!("{}", sdp);
                 return;
             }
         };
 
-        let sess_desc = SessionDescription { sdp, desc_type };
+        let sess_desc = SessionDescription { sdp, sdp_type };
 
         let _guard = rtc_pc.lock.lock();
         rtc_pc.pc_handler.on_description(sess_desc);
@@ -388,16 +385,16 @@ where
         RtcDataChannel::new(id, dc)
     }
 
-    pub fn set_local_description(&mut self, desc_type: DescriptionType) -> Result<()> {
-        let desc_type = CString::new(desc_type.val())?;
-        check(unsafe { sys::rtcSetLocalDescription(self.id, desc_type.as_ptr()) })?;
+    pub fn set_local_description(&mut self, sdp_type: SdpType) -> Result<()> {
+        let sdp_type = CString::new(sdp_type.val())?;
+        check(unsafe { sys::rtcSetLocalDescription(self.id, sdp_type.as_ptr()) })?;
         Ok(())
     }
 
     pub fn set_remote_description(&mut self, sess_desc: &SessionDescription) -> Result<()> {
         let sdp = CString::new(sess_desc.sdp.to_string())?;
-        let desc_type = CString::new(sess_desc.desc_type.val())?;
-        check(unsafe { sys::rtcSetRemoteDescription(self.id, sdp.as_ptr(), desc_type.as_ptr()) })?;
+        let sdp_type = CString::new(sess_desc.sdp_type.val())?;
+        check(unsafe { sys::rtcSetRemoteDescription(self.id, sdp.as_ptr(), sdp_type.as_ptr()) })?;
         Ok(())
     }
 
@@ -408,134 +405,50 @@ where
         Ok(())
     }
 
-    pub fn local_description(&self) -> Option<String> {
-        let buf_size = check(unsafe {
-            sys::rtcGetLocalDescription(self.id, ptr::null_mut() as *mut c_char, 0)
-        })
-        .expect("Couldn't get buffer size") as usize;
+    pub fn local_description(&self) -> Option<SessionDescription> {
+        let sdp = self
+            .read_string_ffi(sys::rtcGetLocalDescription, "local_description")
+            .map(|sdp| webrtc_sdp::parse_sdp(&sdp, false).map_err(|e| e.to_string()));
 
-        let mut buf = vec![0; buf_size];
-        match check(unsafe {
-            sys::rtcGetLocalDescription(self.id, buf.as_mut_ptr() as *mut c_char, buf_size as i32)
-        }) {
-            Ok(_) => match String::from_utf8(buf) {
-                Ok(local) => Some(local.trim_matches(char::from(0)).to_string()),
-                Err(err) => {
-                    log::error!(
-                        "Couldn't get RtcPeerConnection {:p} local_description: {}",
-                        self,
-                        err
-                    );
-                    None
-                }
-            },
-            Err(Error::NotAvailable) => None,
-            Err(err) => {
-                log::warn!(
-                    "Couldn't get RtcPeerConnection {:p} local_description: {}",
-                    self,
-                    err
-                );
+        let sdp_type = self
+            .read_string_ffi(sys::rtcGetLocalDescriptionType, "local_description_type")
+            .map(|sdp_type| SdpType::from(&sdp_type).map_err(|e| e.to_string()));
+
+        match (sdp, sdp_type) {
+            (Some(Ok(sdp)), Some(Ok(sdp_type))) => Some(SessionDescription { sdp, sdp_type }),
+            (Some(Err(e)), _) | (None, Some(Err(e))) => {
+                log::error!("Got an invalid Sessiondescription: {}", e);
                 None
             }
+            _ => None,
         }
     }
 
-    pub fn remote_description(&self) -> Option<String> {
-        let buf_size = check(unsafe {
-            sys::rtcGetRemoteDescription(self.id, ptr::null_mut() as *mut c_char, 0)
-        })
-        .expect("Couldn't get buffer size") as usize;
+    pub fn remote_description(&self) -> Option<SessionDescription> {
+        let sdp = self
+            .read_string_ffi(sys::rtcGetRemoteDescription, "remote_description")
+            .map(|sdp| webrtc_sdp::parse_sdp(&sdp, false).map_err(|e| e.to_string()));
 
-        let mut buf = vec![0; buf_size];
-        match check(unsafe {
-            sys::rtcGetRemoteDescription(self.id, buf.as_mut_ptr() as *mut c_char, buf_size as i32)
-        }) {
-            Ok(_) => match String::from_utf8(buf) {
-                Ok(remote) => Some(remote.trim_matches(char::from(0)).to_string()),
-                Err(err) => {
-                    log::error!(
-                        "Couldn't get RtcPeerConnection {:p} remote_description: {}",
-                        self,
-                        err
-                    );
-                    None
-                }
-            },
-            Err(Error::NotAvailable) => None,
-            Err(err) => {
-                log::warn!(
-                    "Couldn't get RtcPeerConnection {:p} remote_description: {}",
-                    self,
-                    err
-                );
+        let sdp_type = self
+            .read_string_ffi(sys::rtcGetRemoteDescriptionType, "remote_description_type")
+            .map(|sdp_type| SdpType::from(&sdp_type).map_err(|e| e.to_string()));
+
+        match (sdp, sdp_type) {
+            (Some(Ok(sdp)), Some(Ok(sdp_type))) => Some(SessionDescription { sdp, sdp_type }),
+            (Some(Err(e)), _) | (None, Some(Err(e))) => {
+                log::error!("Got an invalid Sessiondescription: {}", e);
                 None
             }
+            _ => None,
         }
     }
 
     pub fn local_address(&self) -> Option<String> {
-        let buf_size =
-            check(unsafe { sys::rtcGetLocalAddress(self.id, ptr::null_mut() as *mut c_char, 0) })
-                .expect("Couldn't get buffer size") as usize;
-
-        let mut buf = vec![0; buf_size];
-        match check(unsafe {
-            sys::rtcGetLocalAddress(self.id, buf.as_mut_ptr() as *mut c_char, buf_size as i32)
-        }) {
-            Ok(_) => match String::from_utf8(buf) {
-                Ok(local) => Some(local),
-                Err(err) => {
-                    log::error!(
-                        "Couldn't get RtcPeerConnection {:p} local_address: {}",
-                        self,
-                        err
-                    );
-                    None
-                }
-            },
-            Err(Error::NotAvailable) => None,
-            Err(err) => {
-                log::warn!(
-                    "Couldn't get RtcPeerConnection {:p} local_address: {}",
-                    self,
-                    err
-                );
-                None
-            }
-        }
+        self.read_string_ffi(sys::rtcGetLocalAddress, "local_address")
     }
 
     pub fn remote_address(&self) -> Option<String> {
-        let buf_size =
-            check(unsafe { sys::rtcGetRemoteAddress(self.id, ptr::null_mut() as *mut c_char, 0) })
-                .expect("Couldn't get buffer size") as usize;
-
-        let mut buf = vec![0; buf_size];
-        match check(unsafe {
-            sys::rtcGetRemoteAddress(self.id, buf.as_mut_ptr() as *mut c_char, buf_size as i32)
-        }) {
-            Ok(_) => match String::from_utf8(buf) {
-                Ok(remote) => Some(remote.trim_matches(char::from(0)).to_string()),
-                Err(err) => {
-                    log::error!(
-                        "Couldn't get RtcPeerConnection {:p} remote_address: {}",
-                        self,
-                        err
-                    );
-                    None
-                }
-            },
-            Err(Error::NotAvailable) => None,
-            Err(err) => {
-                log::warn!(
-                    "Couldn't get RtcPeerConnection {:p} remote_address: {}",
-                    self,
-                    err
-                );
-                None
-            }
-        }
+        self.read_string_ffi(sys::rtcGetRemoteAddress, "remote_address")
     }
 
     pub fn selected_candidate_pair(&self) -> Option<CandidatePair> {
@@ -581,6 +494,41 @@ where
                 log::warn!(
                     "Couldn't get RtcPeerConnection {:p} candidate_pair: {}",
                     self,
+                    err
+                );
+                None
+            }
+        }
+    }
+
+    fn read_string_ffi(
+        &self,
+        str_fn: unsafe extern "C" fn(i32, *mut c_char, i32) -> i32,
+        prop: &str,
+    ) -> Option<String> {
+        let buf_size = check(unsafe { str_fn(self.id, ptr::null_mut() as *mut c_char, 0) })
+            .expect("Couldn't get buffer size") as usize;
+
+        let mut buf = vec![0; buf_size];
+        match check(unsafe { str_fn(self.id, buf.as_mut_ptr() as *mut c_char, buf_size as i32) }) {
+            Ok(_) => match String::from_utf8(buf) {
+                Ok(local) => Some(local.trim_matches(char::from(0)).to_string()),
+                Err(err) => {
+                    log::error!(
+                        "Couldn't get RtcPeerConnection {:p} {}: {}",
+                        self,
+                        prop,
+                        err
+                    );
+                    None
+                }
+            },
+            Err(Error::NotAvailable) => None,
+            Err(err) => {
+                log::warn!(
+                    "Couldn't get RtcPeerConnection {:p} {}: {}",
+                    self,
+                    prop,
                     err
                 );
                 None
