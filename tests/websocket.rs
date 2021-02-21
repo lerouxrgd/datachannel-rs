@@ -22,8 +22,8 @@ use tokio::spawn;
 use tokio::time::timeout;
 
 use datachannel::{
-    DataChannelHandler, DataChannelInit, DescriptionType, IceCandidate, PeerConnectionHandler,
-    Reliability, RtcConfig, RtcDataChannel, RtcPeerConnection, SessionDescription,
+    DataChannelHandler, DataChannelInit, IceCandidate, PeerConnectionHandler, Reliability,
+    RtcConfig, RtcDataChannel, RtcPeerConnection, SdpType, SessionDescription,
 };
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -297,8 +297,8 @@ async fn run_client(peer_id: Uuid, input: chan::Receiver<Uuid>, output: chan::Se
             let pc = match locked.get_mut(&dest_id) {
                 Some(pc) => pc,
                 None => match &peer_msg.kind {
-                    MsgKind::Description(SessionDescription { desc_type, .. })
-                        if matches!(desc_type, DescriptionType::Offer) =>
+                    MsgKind::Description(SessionDescription { sdp_type, .. })
+                        if matches!(sdp_type, SdpType::Offer) =>
                     {
                         log::info!("Client {:?} answering to {:?}", &peer_id, &dest_id);
 
