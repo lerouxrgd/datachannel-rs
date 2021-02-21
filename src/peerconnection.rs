@@ -93,7 +93,7 @@ pub struct SessionDescription {
     pub sdp_type: SdpType,
 }
 
-fn fmt_sdp(sdp: &SdpSession, f: &mut fmt::Formatter) -> std::result::Result<(), fmt::Error> {
+pub fn fmt_sdp(sdp: &SdpSession, f: &mut fmt::Formatter) -> std::result::Result<(), fmt::Error> {
     let sdp = sdp
         .to_string()
         .trim_end()
@@ -103,7 +103,7 @@ fn fmt_sdp(sdp: &SdpSession, f: &mut fmt::Formatter) -> std::result::Result<(), 
     f.write_str(format!("{{ {} }}", sdp).as_str())
 }
 
-mod serde_sdp {
+pub mod serde_sdp {
     use super::SdpSession;
     use serde::{de, Deserialize, Deserializer, Serializer};
 

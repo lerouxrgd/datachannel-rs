@@ -61,8 +61,8 @@ pub fn cleanup() {
 pub use crate::config::RtcConfig;
 pub use crate::datachannel::{DataChannelHandler, DataChannelInit, Reliability, RtcDataChannel};
 pub use crate::peerconnection::{
-    CandidatePair, ConnectionState, GatheringState, IceCandidate, PeerConnectionHandler,
-    RtcPeerConnection, SdpType, SessionDescription,
+    fmt_sdp, serde_sdp, CandidatePair, ConnectionState, GatheringState, IceCandidate,
+    PeerConnectionHandler, RtcPeerConnection, SdpType, SessionDescription,
 };
 
 pub use webrtc_sdp as sdp;
