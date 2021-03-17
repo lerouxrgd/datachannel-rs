@@ -1,30 +1,34 @@
 use std::env;
 use std::path::PathBuf;
 
+#[allow(dead_code)]
 fn env_var_rerun(name: &str) -> Result<String, env::VarError> {
     println!("cargo:rerun-if-env-changed={}", name);
     env::var(name)
 }
 
 #[cfg(feature = "static")]
-pub fn get_openssl() -> (PathBuf, PathBuf) {
+pub fn get_openssl_root_dir() -> PathBuf {
     let artifacts = openssl_src::Build::new().build();
-    (
-        artifacts.lib_dir().parent().unwrap().to_path_buf(),
-        artifacts.lib_dir().to_path_buf(),
-    )
+    artifacts.lib_dir().parent().unwrap().to_path_buf()
 }
 
 fn main() {
     let out_dir = env::var("OUT_DIR").unwrap();
 
-    if cfg!(feature = "static") {
+    #[cfg(feature = "static")]
+    {
         let mut config = cmake::Config::new("libdatachannel");
         config.build_target("datachannel-static");
         config.out_dir(&out_dir);
+
         config.define("NO_WEBSOCKET", "ON");
         config.define("NO_EXAMPLES", "ON");
         config.define("NO_MEDIA", "ON");
+
+        config.define("OPENSSL_ROOT_DIR", get_openssl_root_dir());
+        config.define("OPENSSL_USE_STATIC_LIBS", "TRUE");
+
         config.build();
     }
 
@@ -33,21 +37,16 @@ fn main() {
     config.define("NO_WEBSOCKET", "ON");
     config.define("NO_EXAMPLES", "ON");
 
-    if let Ok(openssl_root_dir) = env_var_rerun("OPENSSL_ROOT_DIR") {
-        config.define("OPENSSL_ROOT_DIR", openssl_root_dir);
-    }
-
-    if let Ok(openssl_libraries) = env_var_rerun("OPENSSL_LIBRARIES") {
-        config.define("OPENSSL_LIBRARIES", openssl_libraries);
-    }
-
-    #[cfg(feature = "static")]
+    #[cfg(not(feature = "static"))]
     {
-        let (openssl_root_dir, openssl_libraries) = get_openssl();
-        config.define("OPENSSL_ROOT_DIR", openssl_root_dir);
-        config.define("OPENSSL_LIBRARIES", openssl_libraries);
-    }
+        if let Ok(openssl_root_dir) = env_var_rerun("OPENSSL_ROOT_DIR") {
+            config.define("OPENSSL_ROOT_DIR", openssl_root_dir);
+        }
 
+        if let Ok(openssl_libraries) = env_var_rerun("OPENSSL_LIBRARIES") {
+            config.define("OPENSSL_LIBRARIES", openssl_libraries);
+        }
+    }
     config.build();
 
     if cfg!(feature = "static") {
