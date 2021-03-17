@@ -6,6 +6,15 @@ fn env_var_rerun(name: &str) -> Result<String, env::VarError> {
     env::var(name)
 }
 
+#[cfg(feature = "static")]
+pub fn get_openssl() -> (PathBuf, PathBuf) {
+    let artifacts = openssl_src::Build::new().build();
+    (
+        artifacts.lib_dir().parent().unwrap().to_path_buf(),
+        artifacts.lib_dir().to_path_buf(),
+    )
+}
+
 fn main() {
     let out_dir = env::var("OUT_DIR").unwrap();
 
@@ -29,6 +38,13 @@ fn main() {
     }
 
     if let Ok(openssl_libraries) = env_var_rerun("OPENSSL_LIBRARIES") {
+        config.define("OPENSSL_LIBRARIES", openssl_libraries);
+    }
+
+    #[cfg(feature = "static")]
+    {
+        let (openssl_root_dir, openssl_libraries) = get_openssl();
+        config.define("OPENSSL_ROOT_DIR", openssl_root_dir);
         config.define("OPENSSL_LIBRARIES", openssl_libraries);
     }
 
