@@ -58,7 +58,7 @@ pub fn cleanup() {
     unsafe { datachannel_sys::rtcCleanup() };
 }
 
-pub use crate::config::RtcConfig;
+pub use crate::config::{CertificateType, RtcConfig};
 pub use crate::datachannel::{DataChannelHandler, DataChannelInit, Reliability, RtcDataChannel};
 pub use crate::peerconnection::{
     fmt_sdp, serde_sdp, CandidatePair, ConnectionState, GatheringState, IceCandidate,

@@ -47,6 +47,7 @@ fn main() {
             config.define("OPENSSL_LIBRARIES", openssl_libraries);
         }
     }
+
     config.build();
 
     if cfg!(feature = "static") {
