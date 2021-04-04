@@ -10,9 +10,13 @@ pub struct RtcConfig {
     pub ice_servers: Vec<CString>,
     #[derivative(Debug = "ignore")]
     ice_servers_ptrs: Vec<*const c_char>,
+    pub certificate_type: CertificateType,
     pub enable_ice_tcp: bool,
     pub port_range_begin: u16,
     pub port_range_end: u16,
+    pub mtu: i32,
+    pub max_message_size: i32,
+    pub disable_auto_negotiation: bool,
 }
 
 unsafe impl Send for RtcConfig {}
@@ -29,9 +33,13 @@ impl RtcConfig {
         RtcConfig {
             ice_servers,
             ice_servers_ptrs,
+            certificate_type: CertificateType::Default,
             enable_ice_tcp: false,
-            port_range_begin: 1024,
-            port_range_end: 65535,
+            port_range_begin: 0,
+            port_range_end: 0,
+            mtu: 0,
+            max_message_size: 0,
+            disable_auto_negotiation: false,
         }
     }
 
@@ -54,9 +62,13 @@ impl RtcConfig {
         sys::rtcConfiguration {
             iceServers: self.ice_servers_ptrs.as_ptr() as *mut *const c_char,
             iceServersCount: self.ice_servers.len() as i32,
+            certificateType: self.certificate_type as u32,
             enableIceTcp: self.enable_ice_tcp,
             portRangeBegin: self.port_range_begin,
             portRangeEnd: self.port_range_end,
+            mtu: self.mtu,
+            maxMessageSize: self.max_message_size,
+            disableAutoNegotiation: self.disable_auto_negotiation,
         }
     }
 }
@@ -68,9 +80,21 @@ impl Clone for RtcConfig {
         RtcConfig {
             ice_servers,
             ice_servers_ptrs,
+            certificate_type: self.certificate_type,
             enable_ice_tcp: self.enable_ice_tcp,
             port_range_begin: self.port_range_begin,
             port_range_end: self.port_range_end,
+            mtu: self.mtu,
+            max_message_size: self.max_message_size,
+            disable_auto_negotiation: self.disable_auto_negotiation,
         }
     }
+}
+
+#[derive(Debug, PartialEq, Clone, Copy)]
+#[repr(u32)]
+pub enum CertificateType {
+    Default = sys::rtcCertificateType_RTC_CERTIFICATE_DEFAULT,
+    ECDSA = sys::rtcCertificateType_RTC_CERTIFICATE_ECDSA,
+    RSA = sys::rtcCertificateType_RTC_CERTIFICATE_RSA,
 }

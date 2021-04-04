@@ -331,42 +331,7 @@ where
         }
     }
 
-    pub fn add_data_channel<C>(
-        &mut self,
-        label: &str,
-        dc_handler: C,
-    ) -> Result<Box<RtcDataChannel<C>>>
-    where
-        C: DataChannelHandler + Send,
-    {
-        let label = CString::new(label)?;
-        let id = check(unsafe { sys::rtcAddDataChannel(self.id, label.as_ptr()) })?;
-        RtcDataChannel::new(id, dc_handler)
-    }
-
-    pub fn add_data_channel_ex<C>(
-        &mut self,
-        label: &str,
-        dc_handler: C,
-        dc_init: &DataChannelInit,
-    ) -> Result<Box<RtcDataChannel<C>>>
-    where
-        C: DataChannelHandler + Send,
-    {
-        let label = CString::new(label)?;
-        let id = check(unsafe {
-            sys::rtcAddDataChannelEx(self.id, label.as_ptr(), &dc_init.as_raw()?)
-        })?;
-        RtcDataChannel::new(id, dc_handler)
-    }
-
     /// Creates a boxed [`RtcDataChannel`].
-    ///
-    /// This method is equivalent to calling [`add_data_channel`] and
-    /// [`set_local_description`].
-    ///
-    /// [`add_data_channel`]: RtcPeerConnection::add_data_channel
-    /// [`set_local_description`]: RtcPeerConnection::set_local_description
     pub fn create_data_channel<C>(
         &mut self,
         label: &str,

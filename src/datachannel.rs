@@ -12,17 +12,19 @@ use crate::error::{check, Error, Result};
 pub struct Reliability {
     pub unordered: bool,
     pub unreliable: bool,
-    pub max_packet_life_time: u32,
-    pub max_retransmits: u32,
+    pub max_packet_life_time: u16,
+    pub max_retransmits: u16,
 }
 
 impl Reliability {
     fn from_raw(raw: sys::rtcReliability) -> Self {
+        let max_packet_life_time = u16::try_from(raw.maxPacketLifeTime).unwrap_or(0);
+        let max_retransmits = u16::try_from(raw.maxPacketLifeTime).unwrap_or(0);
         Self {
             unordered: raw.unordered,
             unreliable: raw.unreliable,
-            max_packet_life_time: raw.maxPacketLifeTime,
-            max_retransmits: raw.maxRetransmits,
+            max_packet_life_time,
+            max_retransmits,
         }
     }
 
@@ -36,12 +38,12 @@ impl Reliability {
         self
     }
 
-    pub fn max_packet_life_time(mut self, max_packet_life_time: u32) -> Self {
+    pub fn max_packet_life_time(mut self, max_packet_life_time: u16) -> Self {
         self.max_packet_life_time = max_packet_life_time;
         self
     }
 
-    pub fn max_retransmits(mut self, max_retransmits: u32) -> Self {
+    pub fn max_retransmits(mut self, max_retransmits: u16) -> Self {
         self.max_retransmits = max_retransmits;
         self
     }
@@ -50,8 +52,8 @@ impl Reliability {
         sys::rtcReliability {
             unordered: self.unordered,
             unreliable: self.unreliable,
-            maxPacketLifeTime: self.max_packet_life_time,
-            maxRetransmits: self.max_retransmits,
+            maxPacketLifeTime: self.max_packet_life_time as i32,
+            maxRetransmits: self.max_retransmits as i32,
         }
     }
 }
