@@ -436,8 +436,15 @@ where
                 ptr::null_mut() as *mut c_char,
                 0,
             )
-        })
-        .expect("Couldn't get buffer size") as usize;
+        });
+
+        let buf_size = match buf_size {
+            Ok(buf_size) => buf_size as usize,
+            Err(err) => {
+                log::error!("Couldn't get buffer size: {}", err);
+                return None;
+            }
+        };
 
         let mut local_buf = vec![0; buf_size];
         let mut remote_buf = vec![0; buf_size];
@@ -482,8 +489,13 @@ where
         str_fn: unsafe extern "C" fn(i32, *mut c_char, i32) -> i32,
         prop: &str,
     ) -> Option<String> {
-        let buf_size = check(unsafe { str_fn(self.id, ptr::null_mut() as *mut c_char, 0) })
-            .expect("Couldn't get buffer size") as usize;
+        let buf_size = match check(unsafe { str_fn(self.id, ptr::null_mut() as *mut c_char, 0) }) {
+            Ok(buf_size) => buf_size as usize,
+            Err(err) => {
+                log::error!("Couldn't get buffer size: {}", err);
+                return None;
+            }
+        };
 
         let mut buf = vec![0; buf_size];
         match check(unsafe { str_fn(self.id, buf.as_mut_ptr() as *mut c_char, buf_size as i32) }) {
