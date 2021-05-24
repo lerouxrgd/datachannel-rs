@@ -1,6 +1,6 @@
 [package]
 name = "datachannel-sys"
-version = "0.13.0"
+version = "0.13.1"
 authors = ["Romain Leroux <romain@leroux.dev>"]
 edition = "2018"
 links = "datachannel"
@@ -19,10 +19,10 @@ exclude = [
 openssl = "0.10"
 
 [build-dependencies]
-bindgen = "0.56"
+bindgen = "0.54"
 cmake = "0.1"
 cpp_build = { version = "0.5", optional = true }
-openssl-src = { version = "111.14.0+1.1.1j", optional = true }
+openssl-src = { version = "111.15.0+1.1.1k", optional = true }
 
 [features]
 static = ["openssl/vendored", "openssl-src", "cpp_build"]
