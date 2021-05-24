@@ -91,7 +91,6 @@ pub trait TrackHandler {
     fn on_closed(&mut self) {}
     fn on_error(&mut self, err: &str) {}
     fn on_message(&mut self, msg: &[u8]) {}
-    fn on_buffered_amount_low(&mut self) {}
     fn on_available(&mut self) {}
 }
 
@@ -123,11 +122,6 @@ where
             check(sys::rtcSetMessageCallback(
                 id,
                 Some(RtcTrack::<T>::message_cb),
-            ))?;
-
-            check(sys::rtcSetBufferedAmountLowCallback(
-                id,
-                Some(RtcTrack::<T>::buffered_amount_low_cb),
             ))?;
 
             check(sys::rtcSetAvailableCallback(
@@ -163,11 +157,6 @@ where
             slice::from_raw_parts(msg as *const u8, size as usize)
         };
         rtc_t.t_handler.on_message(msg)
-    }
-
-    unsafe extern "C" fn buffered_amount_low_cb(_: i32, ptr: *mut c_void) {
-        let rtc_t = &mut *(ptr as *mut RtcTrack<T>);
-        rtc_t.t_handler.on_buffered_amount_low()
     }
 
     unsafe extern "C" fn available_cb(_: i32, ptr: *mut c_void) {
