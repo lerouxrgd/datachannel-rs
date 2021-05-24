@@ -7,11 +7,12 @@ use datachannel_sys as sys;
 use derivative::Derivative;
 use parking_lot::ReentrantMutex;
 use serde::{Deserialize, Serialize};
-use webrtc_sdp::{parse_sdp, SdpSession};
+use webrtc_sdp::{media_type::SdpMedia, parse_sdp, SdpSession};
 
 use crate::config::RtcConfig;
 use crate::datachannel::{DataChannelHandler, DataChannelInit, RtcDataChannel};
 use crate::error::{check, Error, Result};
+use crate::track::{RtcTrack, TrackHandler, TrackInit};
 
 #[derive(Debug, PartialEq)]
 pub enum ConnectionState {
@@ -359,6 +360,25 @@ where
             sys::rtcCreateDataChannelEx(self.id, label.as_ptr(), &dc_init.as_raw()?)
         })?;
         RtcDataChannel::new(id, dc_handler)
+    }
+
+    /// Creates a boxed [`RtcTrack`].
+    pub fn add_track<C>(&mut self, sdp_media: &SdpMedia, t_handler: C) -> Result<Box<RtcTrack<C>>>
+    where
+        C: TrackHandler + Send,
+    {
+        let desc = sdp_media.to_string();
+        let desc = CString::new(desc.strip_prefix("m=").unwrap_or(&desc))?;
+        let id = check(unsafe { sys::rtcAddTrack(self.id, desc.as_ptr()) })?;
+        RtcTrack::new(id, t_handler)
+    }
+
+    pub fn add_track_ex<C>(&mut self, t_init: &TrackInit, t_handler: C) -> Result<Box<RtcTrack<C>>>
+    where
+        C: TrackHandler + Send,
+    {
+        let id = check(unsafe { sys::rtcAddTrackEx(self.id, &t_init.as_raw()) })?;
+        RtcTrack::new(id, t_handler)
     }
 
     pub fn set_local_description(&mut self, sdp_type: SdpType) -> Result<()> {
