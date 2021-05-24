@@ -2,6 +2,7 @@ mod config;
 mod datachannel;
 mod error;
 mod peerconnection;
+mod track;
 
 mod sys {
     use std::ffi::CStr;
@@ -64,5 +65,6 @@ pub use crate::peerconnection::{
     fmt_sdp, serde_sdp, CandidatePair, ConnectionState, GatheringState, IceCandidate,
     PeerConnectionHandler, RtcPeerConnection, SdpType, SessionDescription,
 };
+pub use crate::track::{Codec, Direction, RtcTrack, TrackHandler, TrackInit};
 
 pub use webrtc_sdp as sdp;
