@@ -62,7 +62,7 @@ impl RtcConfig {
         sys::rtcConfiguration {
             iceServers: self.ice_servers_ptrs.as_ptr() as *mut *const c_char,
             iceServersCount: self.ice_servers.len() as i32,
-            certificateType: self.certificate_type as u32,
+            certificateType: self.certificate_type as _,
             enableIceTcp: self.enable_ice_tcp,
             portRangeBegin: self.port_range_begin,
             portRangeEnd: self.port_range_end,
@@ -91,8 +91,18 @@ impl Clone for RtcConfig {
     }
 }
 
+#[cfg(not(target_os = "windows"))]
 #[derive(Debug, PartialEq, Clone, Copy)]
 #[repr(u32)]
+pub enum CertificateType {
+    Default = sys::rtcCertificateType_RTC_CERTIFICATE_DEFAULT,
+    ECDSA = sys::rtcCertificateType_RTC_CERTIFICATE_ECDSA,
+    RSA = sys::rtcCertificateType_RTC_CERTIFICATE_RSA,
+}
+
+#[cfg(target_os = "windows")]
+#[derive(Debug, PartialEq, Clone, Copy)]
+#[repr(i32)]
 pub enum CertificateType {
     Default = sys::rtcCertificateType_RTC_CERTIFICATE_DEFAULT,
     ECDSA = sys::rtcCertificateType_RTC_CERTIFICATE_ECDSA,
