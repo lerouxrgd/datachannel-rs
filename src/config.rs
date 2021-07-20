@@ -1,5 +1,6 @@
 use std::ffi::CString;
 use std::os::raw::c_char;
+use std::ptr;
 
 use datachannel_sys as sys;
 use derivative::Derivative;
@@ -10,7 +11,9 @@ pub struct RtcConfig {
     pub ice_servers: Vec<CString>,
     #[derivative(Debug = "ignore")]
     ice_servers_ptrs: Vec<*const c_char>,
+    pub bind_address: Option<CString>,
     pub certificate_type: CertificateType,
+    pub ice_transport_policy: TransportPolicy,
     pub enable_ice_tcp: bool,
     pub port_range_begin: u16,
     pub port_range_end: u16,
@@ -33,7 +36,9 @@ impl RtcConfig {
         RtcConfig {
             ice_servers,
             ice_servers_ptrs,
+            bind_address: None,
             certificate_type: CertificateType::Default,
+            ice_transport_policy: TransportPolicy::All,
             enable_ice_tcp: false,
             port_range_begin: 0,
             port_range_end: 0,
@@ -43,8 +48,23 @@ impl RtcConfig {
         }
     }
 
+    pub fn bind_address<S: AsRef<str>>(mut self, addr: &S) -> Self {
+        self.bind_address = Some(CString::new(addr.as_ref()).unwrap());
+        self
+    }
+
+    pub fn certificate_type(mut self, certificate_type: CertificateType) -> Self {
+        self.certificate_type = certificate_type;
+        self
+    }
+
     pub fn enable_ice_tcp(mut self) -> Self {
         self.enable_ice_tcp = true;
+        self
+    }
+
+    pub fn ice_transport_policy(mut self, ice_transport_policy: TransportPolicy) -> Self {
+        self.ice_transport_policy = ice_transport_policy;
         self
     }
 
@@ -58,11 +78,27 @@ impl RtcConfig {
         self
     }
 
+    pub fn mtu(mut self, mtu: i32) -> Self {
+        self.mtu = mtu;
+        self
+    }
+
+    pub fn max_message_size(mut self, max_message_size: i32) -> Self {
+        self.max_message_size = max_message_size;
+        self
+    }
+
     pub(crate) fn as_raw(&self) -> sys::rtcConfiguration {
         sys::rtcConfiguration {
             iceServers: self.ice_servers_ptrs.as_ptr() as *mut *const c_char,
             iceServersCount: self.ice_servers.len() as i32,
+            bindAddress: self
+                .bind_address
+                .as_ref()
+                .map(|addr| addr.as_ptr())
+                .unwrap_or(ptr::null()) as *const c_char,
             certificateType: self.certificate_type as _,
+            iceTransportPolicy: self.ice_transport_policy as _,
             enableIceTcp: self.enable_ice_tcp,
             portRangeBegin: self.port_range_begin,
             portRangeEnd: self.port_range_end,
@@ -80,7 +116,9 @@ impl Clone for RtcConfig {
         RtcConfig {
             ice_servers,
             ice_servers_ptrs,
+            bind_address: self.bind_address.clone(),
             certificate_type: self.certificate_type,
+            ice_transport_policy: self.ice_transport_policy,
             enable_ice_tcp: self.enable_ice_tcp,
             port_range_begin: self.port_range_begin,
             port_range_end: self.port_range_end,
@@ -107,4 +145,20 @@ pub enum CertificateType {
     Default = sys::rtcCertificateType_RTC_CERTIFICATE_DEFAULT,
     ECDSA = sys::rtcCertificateType_RTC_CERTIFICATE_ECDSA,
     RSA = sys::rtcCertificateType_RTC_CERTIFICATE_RSA,
+}
+
+#[cfg(not(target_os = "windows"))]
+#[derive(Debug, PartialEq, Clone, Copy)]
+#[repr(u32)]
+pub enum TransportPolicy {
+    All = sys::rtcTransportPolicy_RTC_TRANSPORT_POLICY_ALL,
+    Relay = sys::rtcTransportPolicy_RTC_TRANSPORT_POLICY_RELAY,
+}
+
+#[cfg(target_os = "windows")]
+#[derive(Debug, PartialEq, Clone, Copy)]
+#[repr(i32)]
+pub enum TransportPolicy {
+    All = sys::rtcTransportPolicy_RTC_TRANSPORT_POLICY_ALL,
+    Relay = sys::rtcTransportPolicy_RTC_TRANSPORT_POLICY_RELAY,
 }
