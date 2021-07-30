@@ -114,3 +114,20 @@ export OPENSSL_LIBRARIES=/usr/local/Cellar/openssl@1.1/1.1.1i/lib
 With the paths of your local `OpenSSL` installation.
 
 [libdatachannel]: https://github.com/paullouisageneau/libdatachannel
+
+### Ubuntu
+
+```sh
+# Needed to compile libdatachannel
+sudo apt install build-essential cmake pkg-config libssl-dev clang
+
+# Checkout datachannel-rs
+git clone https://github.com/lerouxrgd/datachannel-rs.git
+cd datachannel-rs
+
+# Recursive update submodules (libdatachanel has it's own submodules)
+git submodule update --init --recursive
+
+# Build
+cargo build
+```
