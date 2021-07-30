@@ -95,6 +95,12 @@ Complete implementation example can be found in the [tests](tests).
 Note that `CMake` is required to compile [libdatachannel][] through
 [datachannel-sys](datachannel-sys).
 
+Clone the repo recursively:
+
+```sh
+git clone --recursive https://github.com/lerouxrgd/datachannel-rs.git
+```
+
 ### Static build
 
 By default [libdatachannel][] will be built and linked dynamically. However there is a
@@ -106,28 +112,20 @@ dependencies, including `OpenSSL`).
 You probably need to set the following environment variables if your build fails with an
 `OpenSSL` related error.
 
-```bash
+```sh
 export OPENSSL_ROOT_DIR=/usr/local/Cellar/openssl@1.1/1.1.1i/
 export OPENSSL_LIBRARIES=/usr/local/Cellar/openssl@1.1/1.1.1i/lib
 ```
 
 With the paths of your local `OpenSSL` installation.
 
-[libdatachannel]: https://github.com/paullouisageneau/libdatachannel
-
 ### Ubuntu
+
+Required dependencies:
 
 ```sh
 # Needed to compile libdatachannel
 sudo apt install build-essential cmake pkg-config libssl-dev clang
-
-# Checkout datachannel-rs
-git clone https://github.com/lerouxrgd/datachannel-rs.git
-cd datachannel-rs
-
-# Recursive update submodules (libdatachanel has it's own submodules)
-git submodule update --init --recursive
-
-# Build
-cargo build
 ```
+
+[libdatachannel]: https://github.com/paullouisageneau/libdatachannel
