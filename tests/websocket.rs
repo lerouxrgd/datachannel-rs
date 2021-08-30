@@ -361,8 +361,8 @@ async fn test_connectivity() {
     tx_id.try_send(id1).unwrap();
 
     let mut res = HashSet::new();
-    let r1 = timeout(Duration::from_secs(5), rx_res.recv()).await;
-    let r2 = timeout(Duration::from_secs(5), rx_res.recv()).await;
+    let r1 = timeout(Duration::from_secs(10), rx_res.recv()).await;
+    let r2 = timeout(Duration::from_secs(10), rx_res.recv()).await;
     res.insert(r1.unwrap().unwrap());
     res.insert(r2.unwrap().unwrap());
 

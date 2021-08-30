@@ -187,8 +187,8 @@ fn test_connectivity() {
     expected.insert("PONG from 2".to_string());
 
     let mut res = HashSet::new();
-    res.insert(rx_res.recv_timeout(Duration::from_secs(5)).unwrap());
-    res.insert(rx_res.recv_timeout(Duration::from_secs(5)).unwrap());
+    res.insert(rx_res.recv_timeout(Duration::from_secs(10)).unwrap());
+    res.insert(rx_res.recv_timeout(Duration::from_secs(10)).unwrap());
 
     assert_eq!(expected, res);
 
