@@ -63,7 +63,7 @@ pub use crate::config::{CertificateType, RtcConfig, TransportPolicy};
 pub use crate::datachannel::{DataChannelHandler, DataChannelInit, Reliability, RtcDataChannel};
 pub use crate::peerconnection::{
     fmt_sdp, serde_sdp, CandidatePair, ConnectionState, GatheringState, IceCandidate,
-    PeerConnectionHandler, RtcPeerConnection, SdpType, SessionDescription,
+    PeerConnectionHandler, RtcPeerConnection, SdpType, SessionDescription, SignalingState,
 };
 pub use crate::track::{Codec, Direction, RtcTrack, TrackHandler, TrackInit};
 
