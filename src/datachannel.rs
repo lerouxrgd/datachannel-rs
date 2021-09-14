@@ -208,37 +208,6 @@ where
         .map(|_| ())
     }
 
-    pub fn receive(&mut self) -> Result<Option<Vec<u8>>> {
-        let mut size = 0 as i32;
-        let buf_size = check(unsafe {
-            sys::rtcReceiveMessage(self.id, ptr::null_mut() as *mut c_char, &mut size)
-        })
-        .expect("Couldn't get buffer size") as usize;
-
-        let mut buf = vec![0; buf_size];
-        unsafe {
-            match check(sys::rtcReceiveMessage(
-                self.id,
-                buf.as_mut_ptr() as *mut c_char,
-                &mut size,
-            )) {
-                Ok(_) => {
-                    let msg = if size < 0 {
-                        CStr::from_ptr(buf.as_ptr()).to_bytes()
-                    } else {
-                        slice::from_raw_parts(
-                            buf[..size as usize].as_ptr() as *const u8,
-                            size as usize,
-                        )
-                    };
-                    Ok(Some(msg.to_vec()))
-                }
-                Err(Error::NotAvailable) => Ok(None),
-                Err(err) => Err(err),
-            }
-        }
-    }
-
     pub fn label(&self) -> String {
         let buf_size = check(unsafe {
             sys::rtcGetDataChannelLabel(self.id, ptr::null_mut() as *mut c_char, 0)
