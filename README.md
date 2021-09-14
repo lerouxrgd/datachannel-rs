@@ -90,6 +90,8 @@ dc.send("Hello Peer!".as_bytes())?;
 
 Complete implementation example can be found in the [tests](tests).
 
+See also [async-datachannel][] for an async-based implementation.
+
 ## Building
 
 Note that `CMake` is required to compile [libdatachannel][] through
@@ -129,3 +131,4 @@ sudo apt install build-essential cmake pkg-config libssl-dev clang
 ```
 
 [libdatachannel]: https://github.com/paullouisageneau/libdatachannel
+[async-datachannel]: https://github.com/wngr/async-datachannel
