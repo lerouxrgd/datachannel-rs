@@ -1,6 +1,6 @@
 [package]
 name = "datachannel"
-version = "0.7.1"
+version = "0.7.2"
 authors = ["Romain Leroux <romain@leroux.dev>"]
 edition = "2018"
 description = "Rust wrappers for libdatachannel."
@@ -11,7 +11,7 @@ license = "LGPL-2.1"
 readme = "README.md"
 
 [dependencies]
-datachannel-sys = { path = "datachannel-sys", version = "0.15.0" }
+datachannel-sys = { path = "datachannel-sys", version = "0.15.5" }
 derivative = "2"
 lazy_static = "1"
 log = "0.4"
@@ -23,7 +23,7 @@ webrtc-sdp = "0.3"
 async-channel = "1"
 # async-std = { version = "1", features = ["attributes"] }
 # async-tungstenite = { version = "0.14", features = ["async-std-runtime"] }
-async-tungstenite = { version = "0.14", features = ["tokio-runtime"] }
+async-tungstenite = { version = "0.16", features = ["tokio-runtime"] }
 crossbeam-channel = "0.5"
 env_logger = "0.9"
 futures-util = "0.3"
