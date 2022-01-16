@@ -1,8 +1,8 @@
 [package]
 name = "datachannel"
-version = "0.7.2"
+version = "0.7.3"
 authors = ["Romain Leroux <romain@leroux.dev>"]
-edition = "2018"
+edition = "2021"
 description = "Rust wrappers for libdatachannel."
 repository = "https://github.com/lerouxrgd/datachannel-rs"
 keywords = ["datachannel", "webrtc", "p2p"]
@@ -11,7 +11,7 @@ license = "LGPL-2.1"
 readme = "README.md"
 
 [dependencies]
-datachannel-sys = { path = "datachannel-sys", version = "0.15.5" }
+datachannel-sys = { path = "datachannel-sys", version = "0.16.4" }
 derivative = "2"
 lazy_static = "1"
 log = "0.4"

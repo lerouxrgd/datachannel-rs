@@ -1,8 +1,8 @@
 [package]
 name = "datachannel-sys"
-version = "0.15.5"
+version = "0.16.4"
 authors = ["Romain Leroux <romain@leroux.dev>"]
-edition = "2018"
+edition = "2021"
 links = "datachannel"
 description = "Native bindings to libdatachannel."
 repository = "https://github.com/lerouxrgd/datachannel-rs"
