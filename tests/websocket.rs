@@ -1,5 +1,4 @@
 use std::collections::{HashMap, HashSet};
-use std::env;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -8,6 +7,8 @@ use async_tungstenite::tungstenite::http::{Request, Response, StatusCode};
 use async_tungstenite::tungstenite::protocol::Message;
 use futures_util::{future, pin_mut, select, FutureExt, StreamExt};
 use serde::{Deserialize, Serialize};
+use tracing::Level;
+use tracing_subscriber::FmtSubscriber;
 use uuid::Uuid;
 
 // use async_std::future::timeout;
@@ -63,7 +64,7 @@ async fn handle_new_peer(peers: PeerMap, stream: TcpStream) {
         match Uuid::parse_str(tokens[1]) {
             Ok(uuid) => peer_id = Some(uuid),
             Err(err) => {
-                log::error!("Invalid uuid: {}", err);
+                tracing::error!("Invalid uuid: {}", err);
                 *resp.status_mut() = StatusCode::BAD_REQUEST;
             }
         }
@@ -73,7 +74,7 @@ async fn handle_new_peer(peers: PeerMap, stream: TcpStream) {
     let websocket = match accept_hdr_async(stream, callback).await {
         Ok(websocket) => websocket,
         Err(err) => {
-            log::error!("WebSocket handshake failed: {}", err);
+            tracing::error!("WebSocket handshake failed: {}", err);
             return;
         }
     };
@@ -82,7 +83,7 @@ async fn handle_new_peer(peers: PeerMap, stream: TcpStream) {
         None => return,
         Some(peer_id) => peer_id,
     };
-    log::info!("Peer {} connected", &peer_id);
+    tracing::info!("Peer {} connected", &peer_id);
 
     let (outgoing, mut incoming) = websocket.split();
     let (tx_ws, rx_ws) = chan::unbounded();
@@ -100,22 +101,22 @@ async fn handle_new_peer(peers: PeerMap, stream: TcpStream) {
             let mut peer_msg = match serde_json::from_slice::<ConnectionMsg>(&msg.into_data()) {
                 Ok(peer_msg) => peer_msg,
                 Err(err) => {
-                    log::error!("Invalid ConnectionMsg: {}", err);
+                    tracing::error!("Invalid ConnectionMsg: {}", err);
                     continue;
                 }
             };
-            log::info!("Peer {} << {:?}", &peer_id, &peer_msg);
+            tracing::info!("Peer {} << {:?}", &peer_id, &peer_msg);
 
             let dest_id = peer_msg.dest_id;
 
             match peers.lock().unwrap().get_mut(&dest_id) {
                 Some(dest_peer) => {
                     peer_msg.dest_id = peer_id;
-                    log::info!("Peer {} >> {:?}", &dest_id, &peer_msg);
+                    tracing::info!("Peer {} >> {:?}", &dest_id, &peer_msg);
                     let peer_msg = serde_json::to_vec(&peer_msg).unwrap();
                     dest_peer.try_send(Message::binary(peer_msg)).ok();
                 }
-                _ => log::warn!("Peer {} not found in server", &dest_id),
+                _ => tracing::warn!("Peer {} not found in server", &dest_id),
             }
         }
     };
@@ -123,7 +124,7 @@ async fn handle_new_peer(peers: PeerMap, stream: TcpStream) {
     pin_mut!(dispatch, reply);
     future::select(dispatch, reply).await;
 
-    log::info!("Peer {} disconnected", &peer_id);
+    tracing::info!("Peer {} disconnected", &peer_id);
     peers.lock().unwrap().remove(&peer_id);
 }
 
@@ -214,7 +215,7 @@ impl PeerConnectionHandler for WsConn {
     }
 
     fn on_data_channel(&mut self, mut dc: Box<RtcDataChannel<DataPipe>>) {
-        log::info!(
+        tracing::info!(
             "Received Datachannel with: label={}, protocol={:?}, reliability={:?}",
             dc.label(),
             dc.protocol(),
@@ -248,7 +249,7 @@ async fn run_client(peer_id: Uuid, input: chan::Receiver<Uuid>, output: chan::Se
             Ok(dest_id) if dest_id != peer_id => dest_id,
             Err(_) | Ok(_) => return,
         };
-        log::info!("Peer {:?} sends data", &peer_id);
+        tracing::info!("Peer {:?} sends data", &peer_id);
 
         let pipe = DataPipe::new_receiver(output.clone());
         let conn = WsConn::new(peer_id, dest_id, pipe, tx_ws.clone());
@@ -287,7 +288,7 @@ async fn run_client(peer_id: Uuid, input: chan::Receiver<Uuid>, output: chan::Se
             let peer_msg = match serde_json::from_slice::<ConnectionMsg>(&msg.into_data()) {
                 Ok(peer_msg) => peer_msg,
                 Err(err) => {
-                    log::error!("Invalid ConnectionMsg: {}", err);
+                    tracing::error!("Invalid ConnectionMsg: {}", err);
                     continue;
                 }
             };
@@ -300,7 +301,7 @@ async fn run_client(peer_id: Uuid, input: chan::Receiver<Uuid>, output: chan::Se
                     MsgKind::Description(SessionDescription { sdp_type, .. })
                         if matches!(sdp_type, SdpType::Offer) =>
                     {
-                        log::info!("Client {:?} answering to {:?}", &peer_id, &dest_id);
+                        tracing::info!("Client {:?} answering to {:?}", &peer_id, &dest_id);
 
                         let pipe = DataPipe::new_receiver(output.clone());
                         let conn = WsConn::new(peer_id, dest_id, pipe, tx_ws.clone());
@@ -310,7 +311,7 @@ async fn run_client(peer_id: Uuid, input: chan::Receiver<Uuid>, output: chan::Se
                         locked.get_mut(&dest_id).unwrap()
                     }
                     _ => {
-                        log::warn!("Peer {} not found in client", &dest_id);
+                        tracing::warn!("Peer {} not found in client", &dest_id);
                         continue;
                     }
                 },
@@ -339,8 +340,14 @@ async fn run_client(peer_id: Uuid, input: chan::Receiver<Uuid>, output: chan::Se
 // #[async_std::test]
 #[tokio::test]
 async fn test_connectivity() {
-    env::set_var("RUST_LOG", "info");
-    let _ = env_logger::try_init();
+    tracing::subscriber::set_global_default(
+        FmtSubscriber::builder()
+            .with_max_level(Level::INFO)
+            .finish(),
+    )
+    .ok();
+
+    datachannel::configure_logging(Level::INFO);
 
     let id1 = Uuid::new_v4();
     let id2 = Uuid::new_v4();

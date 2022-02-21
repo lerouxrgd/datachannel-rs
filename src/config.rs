@@ -28,7 +28,7 @@ unsafe impl Sync for RtcConfig {}
 impl RtcConfig {
     pub fn new<S: AsRef<str>>(ice_servers: &[S]) -> Self {
         let mut ice_servers = ice_servers
-            .into_iter()
+            .iter()
             .map(|server| CString::new(server.as_ref()).unwrap())
             .collect::<Vec<_>>();
         ice_servers.shrink_to_fit();

@@ -167,14 +167,13 @@ where
 
 impl<T> Drop for RtcTrack<T> {
     fn drop(&mut self) {
-        match check(unsafe { sys::rtcDeleteTrack(self.id) }) {
-            Err(err) => log::error!(
+        if let Err(err) = check(unsafe { sys::rtcDeleteTrack(self.id) }) {
+            tracing::error!(
                 "Error while dropping RtcTrack id={} {:p}: {}",
                 self.id,
                 self,
                 err
-            ),
-            _ => (),
+            );
         }
     }
 }
