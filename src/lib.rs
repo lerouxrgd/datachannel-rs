@@ -1,8 +1,5 @@
 use std::sync::Once;
 
-#[cfg(feature = "tracing")]
-use tracing::Level;
-
 #[macro_use]
 mod logger;
 
@@ -57,14 +54,14 @@ fn ffi_string(ffi: &[u8]) -> crate::error::Result<String> {
 
 /// An optional function to enable libdatachannel logging via `tracing`, otherwise it will be disabled.
 #[cfg(feature = "tracing")]
-pub fn configure_logging(level: Level) {
+pub fn configure_logging(level: tracing::Level) {
     INIT_LOGGING.call_once(|| {
         let level = match level {
-            Level::ERROR => datachannel_sys::rtcLogLevel_RTC_LOG_ERROR,
-            Level::WARN => datachannel_sys::rtcLogLevel_RTC_LOG_WARNING,
-            Level::INFO => datachannel_sys::rtcLogLevel_RTC_LOG_INFO,
-            Level::DEBUG => datachannel_sys::rtcLogLevel_RTC_LOG_DEBUG,
-            Level::TRACE => datachannel_sys::rtcLogLevel_RTC_LOG_VERBOSE,
+            tracing::Level::ERROR => datachannel_sys::rtcLogLevel_RTC_LOG_ERROR,
+            tracing::Level::WARN => datachannel_sys::rtcLogLevel_RTC_LOG_WARNING,
+            tracing::Level::INFO => datachannel_sys::rtcLogLevel_RTC_LOG_INFO,
+            tracing::Level::DEBUG => datachannel_sys::rtcLogLevel_RTC_LOG_DEBUG,
+            tracing::Level::TRACE => datachannel_sys::rtcLogLevel_RTC_LOG_VERBOSE,
         };
 
         unsafe { datachannel_sys::rtcInitLogger(level, Some(sys::log_callback)) };
