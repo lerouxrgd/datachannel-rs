@@ -221,22 +221,18 @@ where
             Ok(_) => match crate::ffi_string(&buf) {
                 Ok(label) => label,
                 Err(err) => {
-                    tracing::error!(
+                    error!(
                         "Couldn't get label for RtcDataChannel id={} {:p}, {}",
-                        self.id,
-                        self,
-                        err
+                        self.id, self, err
                     );
                     String::default()
                 }
             },
 
             Err(err) => {
-                tracing::warn!(
+                warn!(
                     "Couldn't get label for RtcDataChannel id={} {:p}, {}",
-                    self.id,
-                    self,
-                    err
+                    self.id, self, err
                 );
                 String::default()
             }
@@ -261,21 +257,17 @@ where
             Ok(_) => match crate::ffi_string(&buf) {
                 Ok(protocol) => Some(protocol),
                 Err(err) => {
-                    tracing::error!(
+                    error!(
                         "Couldn't get protocol for RtcDataChannel id={} {:p}, {}",
-                        self.id,
-                        self,
-                        err
+                        self.id, self, err
                     );
                     None
                 }
             },
             Err(err) => {
-                tracing::warn!(
+                warn!(
                     "Couldn't get protocol for RtcDataChannel id={} {:p}, {}",
-                    self.id,
-                    self,
-                    err
+                    self.id, self, err
                 );
                 None
             }
@@ -310,11 +302,9 @@ where
         match check(unsafe { sys::rtcGetBufferedAmount(self.id) }) {
             Ok(amount) => amount as usize,
             Err(err) => {
-                tracing::error!(
+                error!(
                     "Couldn't get buffered_amount for RtcDataChannel id={} {:p}, {}",
-                    self.id,
-                    self,
-                    err
+                    self.id, self, err
                 );
                 0
             }
@@ -346,11 +336,9 @@ where
         match check(unsafe { sys::rtcGetAvailableAmount(self.id) }) {
             Ok(amount) => amount as usize,
             Err(err) => {
-                tracing::error!(
+                error!(
                     "Couldn't get available_amount for RtcDataChannel id={} {:p}, {}",
-                    self.id,
-                    self,
-                    err
+                    self.id, self, err
                 );
                 0
             }
@@ -361,11 +349,9 @@ where
 impl<D> Drop for RtcDataChannel<D> {
     fn drop(&mut self) {
         if let Err(err) = check(unsafe { sys::rtcDeleteDataChannel(self.id) }) {
-            tracing::error!(
+            error!(
                 "Error while dropping RtcDataChannel id={} {:p}: {}",
-                self.id,
-                self,
-                err
+                self.id, self, err
             );
         }
     }

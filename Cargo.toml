@@ -14,7 +14,8 @@ readme = "README.md"
 datachannel-sys = { path = "datachannel-sys", version = "0.16.4" }
 derivative = "2"
 parking_lot = "0.12"
-tracing = "0.1"
+log = { version = "0.4", optional = true }
+tracing = { version = "0.1", optional = true }
 serde = { version = "1", features = ["derive"] }
 webrtc-sdp = "0.3"
 
@@ -26,9 +27,11 @@ async-tungstenite = { version = "0.16", features = ["tokio-runtime"] }
 crossbeam-channel = "0.5"
 futures-util = "0.3"
 tracing-subscriber = "0.3"
+env_logger = "0.9"
 serde_json = "1"
 tokio = { version = "1", features = ["rt", "macros", "time"] }
 uuid = { version = "0.8", features = ["serde", "v4"] }
 
 [features]
+default = ["log"]
 static = ["datachannel-sys/static"]

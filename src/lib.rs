@@ -1,5 +1,10 @@
 use std::sync::Once;
+
+#[cfg(feature = "tracing")]
 use tracing::Level;
+
+#[macro_use]
+mod logger;
 
 mod config;
 mod datachannel;
@@ -19,14 +24,29 @@ mod sys {
         let message = CStr::from_ptr(message).to_string_lossy();
         match level {
             sys::rtcLogLevel_RTC_LOG_NONE => (),
-            sys::rtcLogLevel_RTC_LOG_ERROR => tracing::error!("{}", message),
-            sys::rtcLogLevel_RTC_LOG_WARNING => tracing::warn!("{}", message),
-            sys::rtcLogLevel_RTC_LOG_INFO => tracing::info!("{}", message),
-            sys::rtcLogLevel_RTC_LOG_DEBUG => tracing::debug!("{}", message),
-            sys::rtcLogLevel_RTC_LOG_VERBOSE => tracing::trace!("{}", message),
+            sys::rtcLogLevel_RTC_LOG_ERROR => error!("{}", message),
+            sys::rtcLogLevel_RTC_LOG_WARNING => warn!("{}", message),
+            sys::rtcLogLevel_RTC_LOG_INFO => info!("{}", message),
+            sys::rtcLogLevel_RTC_LOG_DEBUG => debug!("{}", message),
+            sys::rtcLogLevel_RTC_LOG_VERBOSE => trace!("{}", message),
             _ => unreachable!(),
         }
     }
+}
+
+#[cfg(feature = "log")]
+fn ensure_logging() {
+    INIT_LOGGING.call_once(|| {
+        let level = match log::max_level() {
+            log::LevelFilter::Off => datachannel_sys::rtcLogLevel_RTC_LOG_NONE,
+            log::LevelFilter::Error => datachannel_sys::rtcLogLevel_RTC_LOG_ERROR,
+            log::LevelFilter::Warn => datachannel_sys::rtcLogLevel_RTC_LOG_WARNING,
+            log::LevelFilter::Info => datachannel_sys::rtcLogLevel_RTC_LOG_INFO,
+            log::LevelFilter::Debug => datachannel_sys::rtcLogLevel_RTC_LOG_DEBUG,
+            log::LevelFilter::Trace => datachannel_sys::rtcLogLevel_RTC_LOG_VERBOSE,
+        };
+        unsafe { datachannel_sys::rtcInitLogger(level, Some(sys::log_callback)) };
+    });
 }
 
 fn ffi_string(ffi: &[u8]) -> crate::error::Result<String> {
@@ -35,7 +55,8 @@ fn ffi_string(ffi: &[u8]) -> crate::error::Result<String> {
     Ok(String::from_utf8(bytes.to_vec())?)
 }
 
-/// An optional function to enable libdatachannel logging, otherwise it will be disabled.
+/// An optional function to enable libdatachannel logging via `tracing`, otherwise it will be disabled.
+#[cfg(feature = "tracing")]
 pub fn configure_logging(level: Level) {
     INIT_LOGGING.call_once(|| {
         let level = match level {

@@ -7,9 +7,12 @@ use async_tungstenite::tungstenite::http::{Request, Response, StatusCode};
 use async_tungstenite::tungstenite::protocol::Message;
 use futures_util::{future, pin_mut, select, FutureExt, StreamExt};
 use serde::{Deserialize, Serialize};
-use tracing::Level;
-use tracing_subscriber::FmtSubscriber;
 use uuid::Uuid;
+
+#[cfg(feature = "log")]
+use log::*;
+#[cfg(feature = "tracing")]
+use tracing::*;
 
 // use async_std::future::timeout;
 // use async_std::net::{TcpListener, TcpStream};
@@ -64,7 +67,7 @@ async fn handle_new_peer(peers: PeerMap, stream: TcpStream) {
         match Uuid::parse_str(tokens[1]) {
             Ok(uuid) => peer_id = Some(uuid),
             Err(err) => {
-                tracing::error!("Invalid uuid: {}", err);
+                error!("Invalid uuid: {}", err);
                 *resp.status_mut() = StatusCode::BAD_REQUEST;
             }
         }
@@ -74,7 +77,7 @@ async fn handle_new_peer(peers: PeerMap, stream: TcpStream) {
     let websocket = match accept_hdr_async(stream, callback).await {
         Ok(websocket) => websocket,
         Err(err) => {
-            tracing::error!("WebSocket handshake failed: {}", err);
+            error!("WebSocket handshake failed: {}", err);
             return;
         }
     };
@@ -83,7 +86,7 @@ async fn handle_new_peer(peers: PeerMap, stream: TcpStream) {
         None => return,
         Some(peer_id) => peer_id,
     };
-    tracing::info!("Peer {} connected", &peer_id);
+    info!("Peer {} connected", &peer_id);
 
     let (outgoing, mut incoming) = websocket.split();
     let (tx_ws, rx_ws) = chan::unbounded();
@@ -101,22 +104,22 @@ async fn handle_new_peer(peers: PeerMap, stream: TcpStream) {
             let mut peer_msg = match serde_json::from_slice::<ConnectionMsg>(&msg.into_data()) {
                 Ok(peer_msg) => peer_msg,
                 Err(err) => {
-                    tracing::error!("Invalid ConnectionMsg: {}", err);
+                    error!("Invalid ConnectionMsg: {}", err);
                     continue;
                 }
             };
-            tracing::info!("Peer {} << {:?}", &peer_id, &peer_msg);
+            info!("Peer {} << {:?}", &peer_id, &peer_msg);
 
             let dest_id = peer_msg.dest_id;
 
             match peers.lock().unwrap().get_mut(&dest_id) {
                 Some(dest_peer) => {
                     peer_msg.dest_id = peer_id;
-                    tracing::info!("Peer {} >> {:?}", &dest_id, &peer_msg);
+                    info!("Peer {} >> {:?}", &dest_id, &peer_msg);
                     let peer_msg = serde_json::to_vec(&peer_msg).unwrap();
                     dest_peer.try_send(Message::binary(peer_msg)).ok();
                 }
-                _ => tracing::warn!("Peer {} not found in server", &dest_id),
+                _ => warn!("Peer {} not found in server", &dest_id),
             }
         }
     };
@@ -124,7 +127,7 @@ async fn handle_new_peer(peers: PeerMap, stream: TcpStream) {
     pin_mut!(dispatch, reply);
     future::select(dispatch, reply).await;
 
-    tracing::info!("Peer {} disconnected", &peer_id);
+    info!("Peer {} disconnected", &peer_id);
     peers.lock().unwrap().remove(&peer_id);
 }
 
@@ -215,7 +218,7 @@ impl PeerConnectionHandler for WsConn {
     }
 
     fn on_data_channel(&mut self, mut dc: Box<RtcDataChannel<DataPipe>>) {
-        tracing::info!(
+        info!(
             "Received Datachannel with: label={}, protocol={:?}, reliability={:?}",
             dc.label(),
             dc.protocol(),
@@ -249,7 +252,7 @@ async fn run_client(peer_id: Uuid, input: chan::Receiver<Uuid>, output: chan::Se
             Ok(dest_id) if dest_id != peer_id => dest_id,
             Err(_) | Ok(_) => return,
         };
-        tracing::info!("Peer {:?} sends data", &peer_id);
+        info!("Peer {:?} sends data", &peer_id);
 
         let pipe = DataPipe::new_receiver(output.clone());
         let conn = WsConn::new(peer_id, dest_id, pipe, tx_ws.clone());
@@ -288,7 +291,7 @@ async fn run_client(peer_id: Uuid, input: chan::Receiver<Uuid>, output: chan::Se
             let peer_msg = match serde_json::from_slice::<ConnectionMsg>(&msg.into_data()) {
                 Ok(peer_msg) => peer_msg,
                 Err(err) => {
-                    tracing::error!("Invalid ConnectionMsg: {}", err);
+                    error!("Invalid ConnectionMsg: {}", err);
                     continue;
                 }
             };
@@ -301,7 +304,7 @@ async fn run_client(peer_id: Uuid, input: chan::Receiver<Uuid>, output: chan::Se
                     MsgKind::Description(SessionDescription { sdp_type, .. })
                         if matches!(sdp_type, SdpType::Offer) =>
                     {
-                        tracing::info!("Client {:?} answering to {:?}", &peer_id, &dest_id);
+                        info!("Client {:?} answering to {:?}", &peer_id, &dest_id);
 
                         let pipe = DataPipe::new_receiver(output.clone());
                         let conn = WsConn::new(peer_id, dest_id, pipe, tx_ws.clone());
@@ -311,7 +314,7 @@ async fn run_client(peer_id: Uuid, input: chan::Receiver<Uuid>, output: chan::Se
                         locked.get_mut(&dest_id).unwrap()
                     }
                     _ => {
-                        tracing::warn!("Peer {} not found in client", &dest_id);
+                        warn!("Peer {} not found in client", &dest_id);
                         continue;
                     }
                 },
@@ -340,14 +343,22 @@ async fn run_client(peer_id: Uuid, input: chan::Receiver<Uuid>, output: chan::Se
 // #[async_std::test]
 #[tokio::test]
 async fn test_connectivity() {
-    tracing::subscriber::set_global_default(
-        FmtSubscriber::builder()
-            .with_max_level(Level::INFO)
-            .finish(),
-    )
-    .ok();
+    #[cfg(feature = "tracing")]
+    {
+        subscriber::set_global_default(
+            tracing_subscriber::FmtSubscriber::builder()
+                .with_max_level(Level::INFO)
+                .finish(),
+        )
+        .ok();
 
-    datachannel::configure_logging(Level::INFO);
+        datachannel::configure_logging(Level::INFO);
+    }
+    #[cfg(feature = "log")]
+    {
+        std::env::set_var("RUST_LOG", "info");
+        let _ = env_logger::try_init();
+    }
 
     let id1 = Uuid::new_v4();
     let id2 = Uuid::new_v4();

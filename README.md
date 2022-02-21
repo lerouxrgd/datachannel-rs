@@ -92,6 +92,11 @@ Complete implementation example can be found in the [tests](tests).
 
 See also [async-datachannel][] for an async-based implementation.
 
+## Features
+
+- `log` _Default_ Enables logging provided by the `log` crate.
+- `tracing` Enables logging provided by the `tracing` crate.
+
 ## Building
 
 Note that `CMake` is required to compile [libdatachannel][] through
