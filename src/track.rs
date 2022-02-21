@@ -163,6 +163,13 @@ where
         let rtc_t = &mut *(ptr as *mut RtcTrack<T>);
         rtc_t.t_handler.on_available()
     }
+
+    pub fn send(&mut self, msg: &[u8]) -> Result<()> {
+        check(unsafe {
+            sys::rtcSendMessage(self.id, msg.as_ptr() as *const c_char, msg.len() as i32)
+        })
+        .map(|_| ())
+    }
 }
 
 impl<T> Drop for RtcTrack<T> {
