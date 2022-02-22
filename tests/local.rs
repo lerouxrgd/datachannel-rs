@@ -10,9 +10,9 @@ use datachannel::{
 };
 
 #[cfg(feature = "log")]
-use log::*;
+use log as logger;
 #[cfg(feature = "tracing")]
-use tracing::*;
+use tracing as logger;
 
 enum ConnectionMsg {
     RemoteDescription { sess_desc: SessionDescription },
@@ -33,13 +33,13 @@ impl Ping {
 
 impl DataChannelHandler for Ping {
     fn on_open(&mut self) {
-        info!("DataChannel PING: Open");
+        logger::info!("DataChannel PING: Open");
         self.ready.send(()).ok();
     }
 
     fn on_message(&mut self, msg: &[u8]) {
         let msg = String::from_utf8_lossy(msg).to_string();
-        info!("DataChannel PING: Received message: {}", &msg);
+        logger::info!("DataChannel PING: Received message: {}", &msg);
         self.output.send(msg).ok();
     }
 }
@@ -58,7 +58,7 @@ impl Pong {
 impl DataChannelHandler for Pong {
     fn on_message(&mut self, msg: &[u8]) {
         let msg = String::from_utf8_lossy(msg).to_string();
-        info!("DataChannel PONG: Received message: {}", &msg);
+        logger::info!("DataChannel PONG: Received message: {}", &msg);
         self.output.send(msg).ok();
     }
 }
@@ -89,29 +89,29 @@ impl PeerConnectionHandler for LocalConn {
     }
 
     fn on_description(&mut self, sess_desc: SessionDescription) {
-        info!("Description {}: {:?}", self.id, &sess_desc);
+        logger::info!("Description {}: {:?}", self.id, &sess_desc);
         self.signaling
             .send(ConnectionMsg::RemoteDescription { sess_desc })
             .ok();
     }
 
     fn on_candidate(&mut self, cand: IceCandidate) {
-        info!("Candidate {}: {} {}", self.id, &cand.candidate, &cand.mid);
+        logger::info!("Candidate {}: {} {}", self.id, &cand.candidate, &cand.mid);
         self.signaling
             .send(ConnectionMsg::RemoteCandidate { cand })
             .ok();
     }
 
     fn on_connection_state_change(&mut self, state: ConnectionState) {
-        info!("State {}: {:?}", self.id, state);
+        logger::info!("State {}: {:?}", self.id, state);
     }
 
     fn on_gathering_state_change(&mut self, state: GatheringState) {
-        info!("Gathering state {}: {:?}", self.id, state);
+        logger::info!("Gathering state {}: {:?}", self.id, state);
     }
 
     fn on_data_channel(&mut self, mut dc: Box<RtcDataChannel<Pong>>) {
-        info!(
+        logger::info!(
             "PeerConnection {}: Received DataChannel with label={}, protocol={:?}, reliability={:?}",
             self.id,
             dc.label(),
