@@ -13,10 +13,10 @@ readme = "README.md"
 [dependencies]
 datachannel-sys = { path = "datachannel-sys", version = "0.16.4" }
 derivative = "2"
-lazy_static = "1"
-log = "0.4"
-parking_lot = "0.11"
-serde = { version = "1", features = ["derive"] }
+log = {version = "0.4", optional = true}
+parking_lot = "0.12"
+serde = {version = "1", features = ["derive"]}
+tracing = {version = "0.1", optional = true}
 webrtc-sdp = "0.3"
 
 [dev-dependencies]
@@ -29,7 +29,9 @@ env_logger = "0.9"
 futures-util = "0.3"
 serde_json = "1"
 tokio = { version = "1", features = ["rt", "macros", "time"] }
+tracing-subscriber = "0.3"
 uuid = { version = "0.8", features = ["serde", "v4"] }
 
 [features]
+default = ["log"]
 static = ["datachannel-sys/static"]

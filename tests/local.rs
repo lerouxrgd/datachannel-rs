@@ -1,5 +1,4 @@
 use std::collections::HashSet;
-use std::env;
 use std::thread;
 use std::time::Duration;
 
@@ -9,6 +8,11 @@ use datachannel::{
     ConnectionState, DataChannelHandler, GatheringState, IceCandidate, PeerConnectionHandler,
     RtcConfig, RtcDataChannel, RtcPeerConnection, SessionDescription,
 };
+
+#[cfg(feature = "log")]
+use log as logger;
+#[cfg(feature = "tracing")]
+use tracing as logger;
 
 enum ConnectionMsg {
     RemoteDescription { sess_desc: SessionDescription },
@@ -29,13 +33,13 @@ impl Ping {
 
 impl DataChannelHandler for Ping {
     fn on_open(&mut self) {
-        log::info!("DataChannel PING: Open");
+        logger::info!("DataChannel PING: Open");
         self.ready.send(()).ok();
     }
 
     fn on_message(&mut self, msg: &[u8]) {
         let msg = String::from_utf8_lossy(msg).to_string();
-        log::info!("DataChannel PING: Received message: {}", &msg);
+        logger::info!("DataChannel PING: Received message: {}", &msg);
         self.output.send(msg).ok();
     }
 }
@@ -54,7 +58,7 @@ impl Pong {
 impl DataChannelHandler for Pong {
     fn on_message(&mut self, msg: &[u8]) {
         let msg = String::from_utf8_lossy(msg).to_string();
-        log::info!("DataChannel PONG: Received message: {}", &msg);
+        logger::info!("DataChannel PONG: Received message: {}", &msg);
         self.output.send(msg).ok();
     }
 }
@@ -85,29 +89,29 @@ impl PeerConnectionHandler for LocalConn {
     }
 
     fn on_description(&mut self, sess_desc: SessionDescription) {
-        log::info!("Description {}: {:?}", self.id, &sess_desc);
+        logger::info!("Description {}: {:?}", self.id, &sess_desc);
         self.signaling
             .send(ConnectionMsg::RemoteDescription { sess_desc })
             .ok();
     }
 
     fn on_candidate(&mut self, cand: IceCandidate) {
-        log::info!("Candidate {}: {} {}", self.id, &cand.candidate, &cand.mid);
+        logger::info!("Candidate {}: {} {}", self.id, &cand.candidate, &cand.mid);
         self.signaling
             .send(ConnectionMsg::RemoteCandidate { cand })
             .ok();
     }
 
     fn on_connection_state_change(&mut self, state: ConnectionState) {
-        log::info!("State {}: {:?}", self.id, state);
+        logger::info!("State {}: {:?}", self.id, state);
     }
 
     fn on_gathering_state_change(&mut self, state: GatheringState) {
-        log::info!("Gathering state {}: {:?}", self.id, state);
+        logger::info!("Gathering state {}: {:?}", self.id, state);
     }
 
     fn on_data_channel(&mut self, mut dc: Box<RtcDataChannel<Pong>>) {
-        log::info!(
+        logger::info!(
             "PeerConnection {}: Received DataChannel with label={}, protocol={:?}, reliability={:?}",
             self.id,
             dc.label(),
@@ -121,8 +125,22 @@ impl PeerConnectionHandler for LocalConn {
 
 #[test]
 fn test_connectivity() {
-    env::set_var("RUST_LOG", "info");
-    let _ = env_logger::try_init();
+    #[cfg(feature = "tracing")]
+    {
+        subscriber::set_global_default(
+            tracing_subscriber::FmtSubscriber::builder()
+                .with_max_level(Level::INFO)
+                .finish(),
+        )
+        .ok();
+
+        datachannel::configure_logging(Level::INFO);
+    }
+    #[cfg(feature = "log")]
+    {
+        std::env::set_var("RUST_LOG", "info");
+        let _ = env_logger::try_init();
+    }
 
     let (tx_res, rx_res) = chan::unbounded::<String>();
     let (tx_peer1, rx_peer1) = chan::unbounded::<ConnectionMsg>();
