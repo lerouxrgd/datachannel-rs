@@ -127,14 +127,14 @@ impl PeerConnectionHandler for LocalConn {
 fn test_connectivity() {
     #[cfg(feature = "tracing")]
     {
-        subscriber::set_global_default(
+        tracing::subscriber::set_global_default(
             tracing_subscriber::FmtSubscriber::builder()
-                .with_max_level(Level::INFO)
+                .with_max_level(tracing::Level::INFO)
                 .finish(),
         )
         .ok();
 
-        datachannel::configure_logging(Level::INFO);
+        datachannel::configure_logging(tracing::Level::INFO);
     }
     #[cfg(feature = "log")]
     {

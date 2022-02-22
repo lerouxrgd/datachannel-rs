@@ -8,6 +8,7 @@ pub use log::info;
 pub use log::trace;
 #[cfg(feature = "log")]
 pub use log::warn;
+
 #[cfg(feature = "tracing")]
 pub use tracing::debug;
 #[cfg(feature = "tracing")]

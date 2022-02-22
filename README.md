@@ -96,6 +96,7 @@ See also [async-datachannel][] for an async-based implementation.
 
 - `log` _Default_ Enables logging provided by the `log` crate.
 - `tracing` Enables logging provided by the `tracing` crate.
+- `static` Build and link statically (with all dependencies, including `OpenSSL`).
 
 ## Building
 
