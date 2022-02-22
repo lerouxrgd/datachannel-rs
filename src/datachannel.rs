@@ -7,6 +7,7 @@ use std::slice;
 use datachannel_sys as sys;
 
 use crate::error::{check, Error, Result};
+use crate::logger;
 
 #[derive(Debug, Clone, Default)]
 pub struct Reliability {
@@ -221,18 +222,22 @@ where
             Ok(_) => match crate::ffi_string(&buf) {
                 Ok(label) => label,
                 Err(err) => {
-                    error!(
+                    logger::error!(
                         "Couldn't get label for RtcDataChannel id={} {:p}, {}",
-                        self.id, self, err
+                        self.id,
+                        self,
+                        err
                     );
                     String::default()
                 }
             },
 
             Err(err) => {
-                warn!(
+                logger::warn!(
                     "Couldn't get label for RtcDataChannel id={} {:p}, {}",
-                    self.id, self, err
+                    self.id,
+                    self,
+                    err
                 );
                 String::default()
             }
@@ -257,17 +262,21 @@ where
             Ok(_) => match crate::ffi_string(&buf) {
                 Ok(protocol) => Some(protocol),
                 Err(err) => {
-                    error!(
+                    logger::error!(
                         "Couldn't get protocol for RtcDataChannel id={} {:p}, {}",
-                        self.id, self, err
+                        self.id,
+                        self,
+                        err
                     );
                     None
                 }
             },
             Err(err) => {
-                warn!(
+                logger::warn!(
                     "Couldn't get protocol for RtcDataChannel id={} {:p}, {}",
-                    self.id, self, err
+                    self.id,
+                    self,
+                    err
                 );
                 None
             }
@@ -302,9 +311,11 @@ where
         match check(unsafe { sys::rtcGetBufferedAmount(self.id) }) {
             Ok(amount) => amount as usize,
             Err(err) => {
-                error!(
+                logger::error!(
                     "Couldn't get buffered_amount for RtcDataChannel id={} {:p}, {}",
-                    self.id, self, err
+                    self.id,
+                    self,
+                    err
                 );
                 0
             }
@@ -336,9 +347,11 @@ where
         match check(unsafe { sys::rtcGetAvailableAmount(self.id) }) {
             Ok(amount) => amount as usize,
             Err(err) => {
-                error!(
+                logger::error!(
                     "Couldn't get available_amount for RtcDataChannel id={} {:p}, {}",
-                    self.id, self, err
+                    self.id,
+                    self,
+                    err
                 );
                 0
             }
@@ -349,9 +362,11 @@ where
 impl<D> Drop for RtcDataChannel<D> {
     fn drop(&mut self) {
         if let Err(err) = check(unsafe { sys::rtcDeleteDataChannel(self.id) }) {
-            error!(
+            logger::error!(
                 "Error while dropping RtcDataChannel id={} {:p}: {}",
-                self.id, self, err
+                self.id,
+                self,
+                err
             );
         }
     }

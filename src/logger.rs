@@ -1,50 +1,20 @@
-#[cfg(feature = "tracing")]
-macro_rules! error {
-    ($($input:tt)*) => (::tracing::error!($($input)*))
-}
-
 #[cfg(feature = "log")]
-macro_rules! error {
-    ($($input:tt)*) => (::log::error!($($input)*))
-}
-
-#[cfg(feature = "tracing")]
-#[macro_export]
-macro_rules! warn {
-    ($($input:tt)*) => (::tracing::warn!($($input)*))
-}
-
+pub use log::debug;
 #[cfg(feature = "log")]
-macro_rules! warn {
-    ($($input:tt)*) => (::log::warn!($($input)*))
-}
-
-#[cfg(feature = "tracing")]
-macro_rules! info {
-    ($($input:tt)*) => (::tracing::info!($($input)*))
-}
-
+pub use log::error;
 #[cfg(feature = "log")]
-macro_rules! info {
-    ($($input:tt)*) => (::log::info!($($input)*))
-}
-
-#[cfg(feature = "tracing")]
-macro_rules! trace {
-    ($($input:tt)*) => (::tracing::trace!($($input)*))
-}
-
+pub use log::info;
 #[cfg(feature = "log")]
-macro_rules! trace {
-    ($($input:tt)*) => (::log::trace!($($input)*))
-}
-
-#[cfg(feature = "tracing")]
-macro_rules! debug {
-    ($($input:tt)*) => (::tracing::debug!($($input)*))
-}
-
+pub use log::trace;
 #[cfg(feature = "log")]
-macro_rules! debug {
-    ($($input:tt)*) => (::log::debug!($($input)*))
-}
+pub use log::warn;
+#[cfg(feature = "tracing")]
+pub use tracing::debug;
+#[cfg(feature = "tracing")]
+pub use tracing::error;
+#[cfg(feature = "tracing")]
+pub use tracing::info;
+#[cfg(feature = "tracing")]
+pub use tracing::trace;
+#[cfg(feature = "tracing")]
+pub use tracing::warn;

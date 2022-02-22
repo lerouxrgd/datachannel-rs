@@ -1,11 +1,15 @@
-use std::sync::Once;
+#[cfg(not(any(feature = "log", feature = "tracing")))]
+compile_error!("one of the features ['log', 'tracing'] must be enabled");
 
-#[macro_use]
-mod logger;
+#[cfg(all(feature = "log", feature = "tracing"))]
+compile_error!("only one of ['log', 'tracing'] can be enabled");
+
+use std::sync::Once;
 
 mod config;
 mod datachannel;
 mod error;
+mod logger;
 mod peerconnection;
 mod track;
 
@@ -17,15 +21,17 @@ mod sys {
 
     use datachannel_sys as sys;
 
-    pub unsafe extern "C" fn log_callback(level: sys::rtcLogLevel, message: *const c_char) {
+    use crate::logger;
+
+    pub(crate) unsafe extern "C" fn log_callback(level: sys::rtcLogLevel, message: *const c_char) {
         let message = CStr::from_ptr(message).to_string_lossy();
         match level {
             sys::rtcLogLevel_RTC_LOG_NONE => (),
-            sys::rtcLogLevel_RTC_LOG_ERROR => error!("{}", message),
-            sys::rtcLogLevel_RTC_LOG_WARNING => warn!("{}", message),
-            sys::rtcLogLevel_RTC_LOG_INFO => info!("{}", message),
-            sys::rtcLogLevel_RTC_LOG_DEBUG => debug!("{}", message),
-            sys::rtcLogLevel_RTC_LOG_VERBOSE => trace!("{}", message),
+            sys::rtcLogLevel_RTC_LOG_ERROR => logger::error!("{}", message),
+            sys::rtcLogLevel_RTC_LOG_WARNING => logger::warn!("{}", message),
+            sys::rtcLogLevel_RTC_LOG_INFO => logger::info!("{}", message),
+            sys::rtcLogLevel_RTC_LOG_DEBUG => logger::debug!("{}", message),
+            sys::rtcLogLevel_RTC_LOG_VERBOSE => logger::trace!("{}", message),
             _ => unreachable!(),
         }
     }

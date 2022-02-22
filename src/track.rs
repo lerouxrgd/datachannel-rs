@@ -5,6 +5,7 @@ use std::slice;
 use datachannel_sys as sys;
 
 use crate::error::{check, Result};
+use crate::logger;
 
 #[derive(Debug, Clone, Copy)]
 pub enum Direction {
@@ -168,9 +169,11 @@ where
 impl<T> Drop for RtcTrack<T> {
     fn drop(&mut self) {
         if let Err(err) = check(unsafe { sys::rtcDeleteTrack(self.id) }) {
-            error!(
+            logger::error!(
                 "Error while dropping RtcTrack id={} {:p}: {}",
-                self.id, self, err
+                self.id,
+                self,
+                err
             );
         }
     }

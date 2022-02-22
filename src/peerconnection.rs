@@ -12,6 +12,7 @@ use webrtc_sdp::{media_type::SdpMedia, parse_sdp, SdpSession};
 use crate::config::RtcConfig;
 use crate::datachannel::{DataChannelHandler, DataChannelInit, RtcDataChannel};
 use crate::error::{check, Error, Result};
+use crate::logger;
 use crate::track::{RtcTrack, TrackHandler, TrackInit};
 
 #[derive(Debug, PartialEq)]
@@ -248,8 +249,8 @@ where
         let sdp = match parse_sdp(&sdp, false) {
             Ok(sdp) => sdp,
             Err(err) => {
-                warn!("Ignoring invalid SDP: {}", err);
-                debug!("{}", sdp);
+                logger::warn!("Ignoring invalid SDP: {}", err);
+                logger::debug!("{}", sdp);
                 return;
             }
         };
@@ -258,8 +259,8 @@ where
         let sdp_type = match SdpType::from(&sdp_type) {
             Ok(sdp_type) => sdp_type,
             Err(_) => {
-                warn!("Ignoring session with invalid SdpType: {}", sdp_type);
-                debug!("{}", sdp);
+                logger::warn!("Ignoring session with invalid SdpType: {}", sdp_type);
+                logger::debug!("{}", sdp);
                 return;
             }
         };
@@ -325,9 +326,11 @@ where
                 let _guard = rtc_pc.lock.lock();
                 rtc_pc.pc_handler.on_data_channel(dc);
             }
-            Err(err) => error!(
+            Err(err) => logger::error!(
                 "Couldn't create RtcDataChannel with id={} from RtcPeerConnection {:p}: {}",
-                id, ptr, err
+                id,
+                ptr,
+                err
             ),
         }
     }
@@ -413,7 +416,7 @@ where
         match (sdp, sdp_type) {
             (Some(Ok(sdp)), Some(Ok(sdp_type))) => Some(SessionDescription { sdp, sdp_type }),
             (Some(Err(e)), _) | (None, Some(Err(e))) => {
-                error!("Got an invalid Sessiondescription: {}", e);
+                logger::error!("Got an invalid Sessiondescription: {}", e);
                 None
             }
             _ => None,
@@ -432,7 +435,7 @@ where
         match (sdp, sdp_type) {
             (Some(Ok(sdp)), Some(Ok(sdp_type))) => Some(SessionDescription { sdp, sdp_type }),
             (Some(Err(e)), _) | (None, Some(Err(e))) => {
-                error!("Got an invalid Sessiondescription: {}", e);
+                logger::error!("Got an invalid Sessiondescription: {}", e);
                 None
             }
             _ => None,
@@ -461,7 +464,7 @@ where
         let buf_size = match buf_size {
             Ok(buf_size) => buf_size as usize,
             Err(err) => {
-                error!("Couldn't get buffer size: {}", err);
+                logger::error!("Couldn't get buffer size: {}", err);
                 return None;
             }
         };
@@ -483,9 +486,10 @@ where
                 match (local, remote) {
                     (Ok(local), Ok(remote)) => Some(CandidatePair { local, remote }),
                     (Ok(_), Err(err)) | (Err(err), Ok(_)) | (Err(err), Err(_)) => {
-                        error!(
+                        logger::error!(
                             "Couldn't get RtcPeerConnection {:p} candidate_pair: {}",
-                            self, err
+                            self,
+                            err
                         );
                         None
                     }
@@ -493,9 +497,10 @@ where
             }
             Err(Error::NotAvailable) => None,
             Err(err) => {
-                warn!(
+                logger::warn!(
                     "Couldn't get RtcPeerConnection {:p} candidate_pair: {}",
-                    self, err
+                    self,
+                    err
                 );
                 None
             }
@@ -510,7 +515,7 @@ where
         let buf_size = match check(unsafe { str_fn(self.id, ptr::null_mut() as *mut c_char, 0) }) {
             Ok(buf_size) => buf_size as usize,
             Err(err) => {
-                error!("Couldn't get buffer size: {}", err);
+                logger::error!("Couldn't get buffer size: {}", err);
                 return None;
             }
         };
@@ -520,18 +525,22 @@ where
             Ok(_) => match String::from_utf8(buf) {
                 Ok(local) => Some(local.trim_matches(char::from(0)).to_string()),
                 Err(err) => {
-                    error!(
+                    logger::error!(
                         "Couldn't get RtcPeerConnection {:p} {}: {}",
-                        self, prop, err
+                        self,
+                        prop,
+                        err
                     );
                     None
                 }
             },
             Err(Error::NotAvailable) => None,
             Err(err) => {
-                warn!(
+                logger::warn!(
                     "Couldn't get RtcPeerConnection {:p} {}: {}",
-                    self, prop, err
+                    self,
+                    prop,
+                    err
                 );
                 None
             }
@@ -542,9 +551,11 @@ where
 impl<P> Drop for RtcPeerConnection<P> {
     fn drop(&mut self) {
         if let Err(err) = check(unsafe { sys::rtcDeletePeerConnection(self.id) }) {
-            error!(
+            logger::error!(
                 "Error while dropping RtcPeerConnection id={} {:p}: {}",
-                self.id, self, err
+                self.id,
+                self,
+                err
             )
         }
     }
