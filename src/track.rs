@@ -7,6 +7,23 @@ use datachannel_sys as sys;
 use crate::error::{check, Result};
 use crate::logger;
 
+pub struct TrackState {
+    track_id: i32,
+}
+
+impl TrackState {
+    pub fn from_id(id: i32) -> Self {
+        Self { track_id: id }
+    }
+
+    pub fn into_track<C>(self, t_handler: C) -> Result<Box<RtcTrack<C>>>
+    where
+        C: TrackHandler + Send,
+    {
+        RtcTrack::new(self.track_id, t_handler)
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub enum Direction {
     Unknown,
