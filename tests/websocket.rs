@@ -26,7 +26,7 @@ use tokio::spawn;
 use tokio::time::timeout;
 
 use datachannel::{
-    DataChannelHandler, DataChannelInit, IceCandidate, PeerConnectionHandler, Reliability,
+    DataChannelHandler, DataChannelInit, IceCandidate, NoOp, PeerConnectionHandler, Reliability,
     RtcConfig, RtcDataChannel, RtcPeerConnection, SdpType, SessionDescription,
 };
 
@@ -190,9 +190,14 @@ impl WsConn {
 
 impl PeerConnectionHandler for WsConn {
     type DCH = DataPipe;
+    type TH = NoOp;
 
     fn data_channel_handler(&mut self) -> Self::DCH {
         self.pipe.clone()
+    }
+
+    fn track_handler(&mut self) -> Self::TH {
+        NoOp
     }
 
     fn on_description(&mut self, sess_desc: SessionDescription) {

@@ -166,8 +166,10 @@ pub struct IceCandidate {
 #[allow(clippy::boxed_local)]
 pub trait PeerConnectionHandler {
     type DCH;
+    type TH;
 
     fn data_channel_handler(&mut self) -> Self::DCH;
+    fn track_handler(&mut self) -> Self::TH;
 
     fn on_description(&mut self, sess_desc: SessionDescription) {}
     fn on_candidate(&mut self, cand: IceCandidate) {}
@@ -175,7 +177,12 @@ pub trait PeerConnectionHandler {
     fn on_gathering_state_change(&mut self, state: GatheringState) {}
     fn on_signaling_state_change(&mut self, state: SignalingState) {}
     fn on_data_channel(&mut self, data_channel: Box<RtcDataChannel<Self::DCH>>) {}
+    fn on_track(&mut self, track: Box<RtcTrack<Self::TH>>) {}
 }
+
+pub struct NoOp;
+impl DataChannelHandler for NoOp {}
+impl TrackHandler for NoOp {}
 
 pub struct RtcPeerConnection<P> {
     lock: ReentrantMutex<()>,
@@ -187,6 +194,7 @@ impl<P> RtcPeerConnection<P>
 where
     P: PeerConnectionHandler + Send,
     P::DCH: DataChannelHandler + Send,
+    P::TH: TrackHandler + Send,
 {
     pub fn new(config: &RtcConfig, pc_handler: P) -> Result<Box<Self>> {
         #[cfg(feature = "log")]
@@ -231,6 +239,11 @@ where
             check(sys::rtcSetDataChannelCallback(
                 id,
                 Some(RtcPeerConnection::<P>::data_channel_cb),
+            ))?;
+
+            check(sys::rtcSetTrackCallback(
+                id,
+                Some(RtcPeerConnection::<P>::on_track_cb),
             ))?;
 
             Ok(rtc_pc)
@@ -328,6 +341,27 @@ where
             }
             Err(err) => logger::error!(
                 "Couldn't create RtcDataChannel with id={} from RtcPeerConnection {:p}: {}",
+                id,
+                ptr,
+                err
+            ),
+        }
+    }
+
+    unsafe extern "C" fn on_track_cb(_: i32, id: i32, ptr: *mut c_void) {
+        let rtc_pc = &mut *(ptr as *mut RtcPeerConnection<P>);
+
+        let guard = rtc_pc.lock.lock();
+        let track = rtc_pc.pc_handler.track_handler();
+        drop(guard);
+
+        match RtcTrack::new(id, track) {
+            Ok(track) => {
+                let _guard = rtc_pc.lock.lock();
+                rtc_pc.pc_handler.on_track(track);
+            }
+            Err(err) => logger::error!(
+                "Couldn't create RtcTrack with id={} from RtcPeerConnection {:p}: {}",
                 id,
                 ptr,
                 err

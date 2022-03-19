@@ -5,7 +5,7 @@ use std::time::Duration;
 use crossbeam_channel::{self as chan, select};
 
 use datachannel::{
-    ConnectionState, DataChannelHandler, GatheringState, IceCandidate, PeerConnectionHandler,
+    ConnectionState, DataChannelHandler, GatheringState, IceCandidate, NoOp, PeerConnectionHandler,
     RtcConfig, RtcDataChannel, RtcPeerConnection, SessionDescription,
 };
 
@@ -83,9 +83,14 @@ impl LocalConn {
 
 impl PeerConnectionHandler for LocalConn {
     type DCH = Pong;
+    type TH = NoOp;
 
     fn data_channel_handler(&mut self) -> Pong {
         self.pong.clone()
+    }
+
+    fn track_handler(&mut self) -> NoOp {
+        NoOp
     }
 
     fn on_description(&mut self, sess_desc: SessionDescription) {
