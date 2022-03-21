@@ -26,3 +26,4 @@ openssl-src = { version = "111.16.0", optional = true }
 
 [features]
 static = ["openssl/vendored", "openssl-src", "cpp_build"]
+media = []
