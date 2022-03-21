@@ -15,6 +15,7 @@ pub struct RtcConfig {
     pub certificate_type: CertificateType,
     pub ice_transport_policy: TransportPolicy,
     pub enable_ice_tcp: bool,
+    // pub enable_ice_udp_mux: bool,
     pub port_range_begin: u16,
     pub port_range_end: u16,
     pub mtu: i32,
@@ -40,6 +41,7 @@ impl RtcConfig {
             certificate_type: CertificateType::Default,
             ice_transport_policy: TransportPolicy::All,
             enable_ice_tcp: false,
+            // enable_ice_udp_mux: false,
             port_range_begin: 0,
             port_range_end: 0,
             mtu: 0,
@@ -62,6 +64,11 @@ impl RtcConfig {
         self.enable_ice_tcp = true;
         self
     }
+
+    // pub fn enable_ice_udp_mux(mut self) -> Self {
+    //     self.enable_ice_udp_mux = true;
+    //     self
+    // }
 
     pub fn ice_transport_policy(mut self, ice_transport_policy: TransportPolicy) -> Self {
         self.ice_transport_policy = ice_transport_policy;
@@ -100,11 +107,12 @@ impl RtcConfig {
             certificateType: self.certificate_type as _,
             iceTransportPolicy: self.ice_transport_policy as _,
             enableIceTcp: self.enable_ice_tcp,
+            // enableIceUdpMux: self.enable_ice_udp_mux,
+            disableAutoNegotiation: self.disable_auto_negotiation,
             portRangeBegin: self.port_range_begin,
             portRangeEnd: self.port_range_end,
             mtu: self.mtu,
             maxMessageSize: self.max_message_size,
-            disableAutoNegotiation: self.disable_auto_negotiation,
         }
     }
 }
@@ -120,11 +128,12 @@ impl Clone for RtcConfig {
             certificate_type: self.certificate_type,
             ice_transport_policy: self.ice_transport_policy,
             enable_ice_tcp: self.enable_ice_tcp,
+            // enable_ice_udp_mux: self.enable_ice_udp_mux,
+            disable_auto_negotiation: self.disable_auto_negotiation,
             port_range_begin: self.port_range_begin,
             port_range_end: self.port_range_end,
             mtu: self.mtu,
             max_message_size: self.max_message_size,
-            disable_auto_negotiation: self.disable_auto_negotiation,
         }
     }
 }

@@ -92,11 +92,13 @@ Complete implementation example can be found in the [tests](tests).
 
 See also [async-datachannel][] for an async-based implementation.
 
-## Features
+## Cargo features
 
-- `log` _Default_ Enables logging provided by the `log` crate.
-- `tracing` Enables logging provided by the `tracing` crate.
+- `log` _Default_ Enables logging provided by the `log` crate (mutually exclusive with
+  `tracing`).
+- `tracing` Enables logging provided by the `tracing` crate (mutally exclusive with `log`).
 - `static` Build and link statically (with all dependencies, including `OpenSSL`).
+- `media` Enables media support through `libdatachannel`.
 
 ## Building
 
