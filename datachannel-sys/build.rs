@@ -24,7 +24,10 @@ fn main() {
 
         config.define("NO_WEBSOCKET", "ON");
         config.define("NO_EXAMPLES", "ON");
-        config.define("NO_MEDIA", "ON");
+
+        if !cfg!(feature = "media") {
+            config.define("NO_MEDIA", "ON");
+        }
 
         config.define("OPENSSL_ROOT_DIR", get_openssl_root_dir());
         config.define("OPENSSL_USE_STATIC_LIBS", "TRUE");
@@ -36,6 +39,10 @@ fn main() {
     config.out_dir(&out_dir);
     config.define("NO_WEBSOCKET", "ON");
     config.define("NO_EXAMPLES", "ON");
+
+    if !cfg!(feature = "media") {
+        config.define("NO_MEDIA", "ON");
+    }
 
     #[cfg(not(feature = "static"))]
     {
@@ -74,6 +81,15 @@ fn main() {
             out_dir
         );
         println!("cargo:rustc-link-lib=static=usrsctp");
+
+        if cfg!(feature = "media") {
+            // Link static libsrtp
+            println!(
+                "cargo:rustc-link-search=native={}/build/deps/libsrtp",
+                out_dir
+            );
+            println!("cargo:rustc-link-lib=static=srtp2");
+        }
 
         // Link static libdatachannel
         println!("cargo:rustc-link-search=native={}/build", out_dir);

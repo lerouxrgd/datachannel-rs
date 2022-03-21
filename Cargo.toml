@@ -34,3 +34,4 @@ uuid = { version = "0.8", features = ["serde", "v4"] }
 [features]
 default = ["log"]
 static = ["datachannel-sys/static"]
+media = ["datachannel-sys/media"]
