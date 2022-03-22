@@ -1,50 +1,65 @@
 use std::ffi::{c_void, CStr, CString};
 use std::os::raw::c_char;
-use std::slice;
+use std::{ptr, slice};
 
 use datachannel_sys as sys;
+use webrtc_sdp::media_type::{parse_media, SdpMedia};
+use webrtc_sdp::SdpType;
 
 use crate::error::{check, Result};
 use crate::logger;
 
 #[derive(Debug, Clone, Copy)]
+#[cfg_attr(not(target_os = "windows"), repr(u32))]
+#[cfg_attr(target_os = "windows", repr(i32))]
 pub enum Direction {
-    Unknown,
-    SendOnly,
-    RecvOnly,
-    SendRecv,
-    Inactive,
+    Unknown = sys::rtcDirection_RTC_DIRECTION_UNKNOWN,
+    SendOnly = sys::rtcDirection_RTC_DIRECTION_SENDONLY,
+    RecvOnly = sys::rtcDirection_RTC_DIRECTION_RECVONLY,
+    SendRecv = sys::rtcDirection_RTC_DIRECTION_SENDRECV,
+    Inactive = sys::rtcDirection_RTC_DIRECTION_INACTIVE,
 }
 
-impl Direction {
-    pub(crate) fn as_raw(&self) -> sys::rtcDirection {
-        match self {
-            Self::Unknown => sys::rtcDirection_RTC_DIRECTION_UNKNOWN,
-            Self::SendOnly => sys::rtcDirection_RTC_DIRECTION_SENDONLY,
-            Self::RecvOnly => sys::rtcDirection_RTC_DIRECTION_RECVONLY,
-            Self::SendRecv => sys::rtcDirection_RTC_DIRECTION_SENDRECV,
-            Self::Inactive => sys::rtcDirection_RTC_DIRECTION_INACTIVE,
+#[cfg(not(target_os = "windows"))]
+impl TryFrom<u32> for Direction {
+    type Error = ();
+
+    fn try_from(v: u32) -> std::result::Result<Self, Self::Error> {
+        match v {
+            x if x == Self::Unknown as u32 => Ok(Self::Unknown),
+            x if x == Self::SendOnly as u32 => Ok(Self::SendOnly),
+            x if x == Self::RecvOnly as u32 => Ok(Self::RecvOnly),
+            x if x == Self::SendRecv as u32 => Ok(Self::SendRecv),
+            x if x == Self::Inactive as u32 => Ok(Self::Inactive),
+            _ => Err(()),
+        }
+    }
+}
+
+#[cfg(target_os = "windows")]
+impl TryFrom<i32> for Direction {
+    type Error = ();
+
+    fn try_from(v: i32) -> std::result::Result<Self, Self::Error> {
+        match v {
+            x if x == Self::Unknown as i32 => Ok(Self::Unknown),
+            x if x == Self::SendOnly as i32 => Ok(Self::SendOnly),
+            x if x == Self::RecvOnly as i32 => Ok(Self::RecvOnly),
+            x if x == Self::SendRecv as i32 => Ok(Self::SendRecv),
+            x if x == Self::Inactive as i32 => Ok(Self::Inactive),
+            _ => Err(()),
         }
     }
 }
 
 #[derive(Debug, Clone, Copy)]
+#[cfg_attr(not(target_os = "windows"), repr(u32))]
+#[cfg_attr(target_os = "windows", repr(i32))]
 pub enum Codec {
-    H264,
-    VP8,
-    VP9,
-    Opus,
-}
-
-impl Codec {
-    pub(crate) fn as_raw(&self) -> sys::rtcCodec {
-        match self {
-            Self::H264 => sys::rtcCodec_RTC_CODEC_H264,
-            Self::VP8 => sys::rtcCodec_RTC_CODEC_VP8,
-            Self::VP9 => sys::rtcCodec_RTC_CODEC_VP9,
-            Self::Opus => sys::rtcCodec_RTC_CODEC_OPUS,
-        }
-    }
+    H264 = sys::rtcCodec_RTC_CODEC_H264,
+    VP8 = sys::rtcCodec_RTC_CODEC_VP8,
+    VP9 = sys::rtcCodec_RTC_CODEC_VP9,
+    Opus = sys::rtcCodec_RTC_CODEC_OPUS,
 }
 
 #[derive(Debug, Clone)]
@@ -62,8 +77,8 @@ pub struct TrackInit {
 impl TrackInit {
     pub(crate) fn as_raw(&self) -> sys::rtcTrackInit {
         sys::rtcTrackInit {
-            direction: self.direction.as_raw(),
-            codec: self.codec.as_raw(),
+            direction: self.direction as _,
+            codec: self.codec as _,
             payloadType: self.payload_type,
             ssrc: self.ssrc,
             mid: self.mid.as_ptr(),
@@ -170,6 +185,95 @@ where
             sys::rtcSendMessage(self.id, msg.as_ptr() as *const c_char, msg.len() as i32)
         })
         .map(|_| ())
+    }
+
+    pub fn description(&self) -> Option<SdpMedia> {
+        let buf_size = check(unsafe {
+            sys::rtcGetTrackDescription(self.id, ptr::null_mut() as *mut c_char, 0)
+        })
+        .expect("Couldn't get buffer size") as usize;
+
+        let mut buf = vec![0; buf_size];
+        check(unsafe {
+            sys::rtcGetTrackDescription(self.id, buf.as_mut_ptr() as *mut c_char, buf_size as i32)
+        })
+        .map_err(|err| {
+            logger::warn!(
+                "Couldn't get description for RtcTrack id={} {:p}, {}",
+                self.id,
+                self,
+                err
+            );
+        })
+        .ok()
+        .and_then(|_| {
+            crate::ffi_string(&buf)
+                .map_err(|err| {
+                    logger::error!(
+                        "Couldn't get description for RtcTrack id={} {:p}, {}",
+                        self.id,
+                        self,
+                        err
+                    );
+                })
+                .ok()
+        })
+        .and_then(|description| {
+            parse_media(&description)
+                .map_err(|err| {
+                    logger::error!(
+                        "Couldn't get description for RtcTrack id={} {:p}, {}",
+                        self.id,
+                        self,
+                        err
+                    );
+                })
+                .ok()
+        })
+        .and_then(|sdp_type| match sdp_type {
+            SdpType::Media(sdp_media_line) => Some(SdpMedia::new(sdp_media_line)),
+            _ => None,
+        })
+    }
+
+    pub fn mid(&self) -> String {
+        let buf_size =
+            check(unsafe { sys::rtcGetTrackMid(self.id, ptr::null_mut() as *mut c_char, 0) })
+                .expect("Couldn't get buffer size") as usize;
+
+        let mut buf = vec![0; buf_size];
+        check(unsafe {
+            sys::rtcGetTrackMid(self.id, buf.as_mut_ptr() as *mut c_char, buf_size as i32)
+        })
+        .map_err(|err| {
+            logger::warn!(
+                "Couldn't get mid for RtcTrack id={} {:p}, {}",
+                self.id,
+                self,
+                err
+            );
+        })
+        .ok()
+        .and_then(|_| {
+            crate::ffi_string(&buf)
+                .map_err(|err| {
+                    logger::error!(
+                        "Couldn't get mid for RtcTrack id={} {:p}, {}",
+                        self.id,
+                        self,
+                        err
+                    );
+                })
+                .ok()
+        })
+        .unwrap_or_default()
+    }
+
+    pub fn direction(&self) -> Direction {
+        let mut direction = sys::rtcDirection_RTC_DIRECTION_UNKNOWN;
+        check(unsafe { sys::rtcGetTrackDirection(self.id, &mut direction) })
+            .expect("Couldn't get RtcTrack direction");
+        Direction::try_from(direction).unwrap_or(Direction::Unknown)
     }
 }
 
