@@ -13,7 +13,7 @@ use crate::config::RtcConfig;
 use crate::datachannel::{DataChannelHandler, DataChannelInit, RtcDataChannel};
 use crate::error::{check, Error, Result};
 use crate::logger;
-use crate::track::{RtcTrack, TrackHandler, TrackInit};
+use crate::track::{RtcTrack, TrackHandler, TrackInit, TrackState};
 
 #[derive(Debug, PartialEq)]
 pub enum ConnectionState {
@@ -175,6 +175,7 @@ pub trait PeerConnectionHandler {
     fn on_gathering_state_change(&mut self, state: GatheringState) {}
     fn on_signaling_state_change(&mut self, state: SignalingState) {}
     fn on_data_channel(&mut self, data_channel: Box<RtcDataChannel<Self::DCH>>) {}
+    fn on_track(&mut self, state: TrackState) {}
 }
 
 pub struct RtcPeerConnection<P> {
@@ -231,6 +232,11 @@ where
             check(sys::rtcSetDataChannelCallback(
                 id,
                 Some(RtcPeerConnection::<P>::data_channel_cb),
+            ))?;
+
+            check(sys::rtcSetTrackCallback(
+                id,
+                Some(RtcPeerConnection::<P>::on_track_cb),
             ))?;
 
             Ok(rtc_pc)
@@ -333,6 +339,15 @@ where
                 err
             ),
         }
+    }
+
+    unsafe extern "C" fn on_track_cb(_: i32, id: i32, ptr: *mut c_void) {
+        let rtc_pc = &mut *(ptr as *mut RtcPeerConnection<P>);
+
+        let state = TrackState::from_id(id);
+
+        let _guard = rtc_pc.lock.lock();
+        rtc_pc.pc_handler.on_track(state);
     }
 
     /// Creates a boxed [`RtcDataChannel`].
