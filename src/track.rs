@@ -10,8 +10,8 @@ use crate::error::{check, Result};
 use crate::logger;
 
 #[derive(Debug, Clone, Copy)]
-#[cfg_attr(not(target_os = "windows"), repr(u32))]
-#[cfg_attr(target_os = "windows", repr(i32))]
+#[cfg_attr(any(not(target_os = "windows"), target_env = "gnu"), repr(u32))]
+#[cfg_attr(all(target_os = "windows", not(target_env = "gnu")), repr(i32))]
 pub enum Direction {
     Unknown = sys::rtcDirection_RTC_DIRECTION_UNKNOWN,
     SendOnly = sys::rtcDirection_RTC_DIRECTION_SENDONLY,
@@ -20,7 +20,7 @@ pub enum Direction {
     Inactive = sys::rtcDirection_RTC_DIRECTION_INACTIVE,
 }
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(any(not(target_os = "windows"), target_env = "gnu"))]
 impl TryFrom<u32> for Direction {
     type Error = ();
 
@@ -36,7 +36,7 @@ impl TryFrom<u32> for Direction {
     }
 }
 
-#[cfg(target_os = "windows")]
+#[cfg(all(target_os = "windows", not(target_env = "gnu")))]
 impl TryFrom<i32> for Direction {
     type Error = ();
 
@@ -53,8 +53,8 @@ impl TryFrom<i32> for Direction {
 }
 
 #[derive(Debug, Clone, Copy)]
-#[cfg_attr(not(target_os = "windows"), repr(u32))]
-#[cfg_attr(target_os = "windows", repr(i32))]
+#[cfg_attr(any(not(target_os = "windows"), target_env = "gnu"), repr(u32))]
+#[cfg_attr(all(target_os = "windows", not(target_env = "gnu")), repr(i32))]
 pub enum Codec {
     H264 = sys::rtcCodec_RTC_CODEC_H264,
     VP8 = sys::rtcCodec_RTC_CODEC_VP8,

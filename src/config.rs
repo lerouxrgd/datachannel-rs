@@ -139,8 +139,8 @@ impl Clone for RtcConfig {
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
-#[cfg_attr(not(target_os = "windows"), repr(u32))]
-#[cfg_attr(target_os = "windows", repr(i32))]
+#[cfg_attr(any(not(target_os = "windows"), target_env = "gnu"), repr(u32))]
+#[cfg_attr(all(target_os = "windows", not(target_env = "gnu")), repr(i32))]
 pub enum CertificateType {
     Default = sys::rtcCertificateType_RTC_CERTIFICATE_DEFAULT,
     ECDSA = sys::rtcCertificateType_RTC_CERTIFICATE_ECDSA,
@@ -148,8 +148,8 @@ pub enum CertificateType {
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
-#[cfg_attr(not(target_os = "windows"), repr(u32))]
-#[cfg_attr(target_os = "windows", repr(i32))]
+#[cfg_attr(any(not(target_os = "windows"), target_env = "gnu"), repr(u32))]
+#[cfg_attr(all(target_os = "windows", not(target_env = "gnu")), repr(i32))]
 pub enum TransportPolicy {
     All = sys::rtcTransportPolicy_RTC_TRANSPORT_POLICY_ALL,
     Relay = sys::rtcTransportPolicy_RTC_TRANSPORT_POLICY_RELAY,
