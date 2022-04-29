@@ -147,10 +147,10 @@ impl SdpType {
 
     fn val(&self) -> &'static str {
         match self {
-            Self::Answer => "answer,",
-            Self::Offer => "offer,",
-            Self::Pranswer => "pranswer,",
-            Self::Rollback => "rollback,",
+            Self::Answer => "answer",
+            Self::Offer => "offer",
+            Self::Pranswer => "pranswer",
+            Self::Rollback => "rollback",
         }
     }
 }
