@@ -57,6 +57,11 @@ impl RtcConfig {
         self
     }
 
+    pub fn proxy_server<S: AsRef<str>>(mut self, server: &S) -> Self {
+        self.proxy_server = Some(CString::new(server.as_ref()).unwrap());
+        self
+    }
+
     pub fn certificate_type(mut self, certificate_type: CertificateType) -> Self {
         self.certificate_type = certificate_type;
         self
@@ -67,10 +72,10 @@ impl RtcConfig {
         self
     }
 
-    // pub fn enable_ice_udp_mux(mut self) -> Self {
-    //     self.enable_ice_udp_mux = true;
-    //     self
-    // }
+    pub fn enable_ice_udp_mux(mut self) -> Self {
+        self.enable_ice_udp_mux = true;
+        self
+    }
 
     pub fn ice_transport_policy(mut self, ice_transport_policy: TransportPolicy) -> Self {
         self.ice_transport_policy = ice_transport_policy;
