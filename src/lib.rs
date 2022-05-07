@@ -27,7 +27,9 @@ mod sys {
         let message = CStr::from_ptr(message).to_string_lossy();
         match level {
             sys::rtcLogLevel_RTC_LOG_NONE => (),
-            sys::rtcLogLevel_RTC_LOG_ERROR => logger::error!("{}", message),
+            sys::rtcLogLevel_RTC_LOG_ERROR | sys::rtcLogLevel_RTC_LOG_FATAL => {
+                logger::error!("{}", message)
+            }
             sys::rtcLogLevel_RTC_LOG_WARNING => logger::warn!("{}", message),
             sys::rtcLogLevel_RTC_LOG_INFO => logger::info!("{}", message),
             sys::rtcLogLevel_RTC_LOG_DEBUG => logger::debug!("{}", message),
