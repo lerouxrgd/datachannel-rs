@@ -1,6 +1,6 @@
 [package]
 name = "datachannel"
-version = "0.7.7"
+version = "0.7.8"
 edition = "2021"
 description = "Rust wrappers for libdatachannel."
 repository = "https://github.com/lerouxrgd/datachannel-rs"
@@ -10,7 +10,7 @@ license = "LGPL-2.1"
 readme = "README.md"
 
 [dependencies]
-datachannel-sys = { path = "datachannel-sys", version = "0.17.1" }
+datachannel-sys = { path = "datachannel-sys", version = "0.17.7" }
 derivative = "2"
 log = { version = "0.4", optional = true }
 parking_lot = "0.12"
