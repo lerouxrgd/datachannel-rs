@@ -51,6 +51,9 @@ fn main() {
         if let Ok(openssl_root_dir) = env_var_rerun("OPENSSL_ROOT_DIR") {
             config.define("OPENSSL_ROOT_DIR", openssl_root_dir);
         }
+        if let Ok(openssl_libraries) = env_var_rerun("OPENSSL_LIBRARIES") {
+            config.define("OPENSSL_LIBRARIES", openssl_libraries);
+        }
     }
 
     config.build();
@@ -58,6 +61,8 @@ fn main() {
     ////////////////////////////////////////////////////////////////////////////////////
 
     if cfg!(feature = "static") {
+        let profile = config.get_profile();
+
         // Link static libc++
         #[cfg(feature = "static")]
         cpp_build::Config::new()
@@ -65,34 +70,67 @@ fn main() {
             .build("src/lib.rs");
 
         // Link static openssl
-        println!("cargo:rustc-link-lib=static=crypto");
-        println!("cargo:rustc-link-lib=static=ssl");
+        if cfg!(target_env = "msvc") {
+            println!("cargo:rustc-link-lib=static=libcrypto");
+            println!("cargo:rustc-link-lib=static=libssl");
+        } else {
+            println!("cargo:rustc-link-lib=static=crypto");
+            println!("cargo:rustc-link-lib=static=ssl");
+        }
 
         // Link static libjuice
-        println!(
-            "cargo:rustc-link-search=native={}/build/deps/libjuice",
-            out_dir
-        );
+        if cfg!(target_env = "msvc") {
+            println!(
+                "cargo:rustc-link-search=native={}/build/deps/libjuice/{}",
+                out_dir, profile
+            );
+        } else {
+            println!(
+                "cargo:rustc-link-search=native={}/build/deps/libjuice",
+                out_dir
+            );
+        }
         println!("cargo:rustc-link-lib=static=juice-static");
 
         // Link static usrsctplib
-        println!(
-            "cargo:rustc-link-search=native={}/build/deps/usrsctp/usrsctplib",
-            out_dir
-        );
+        if cfg!(target_env = "msvc") {
+            println!(
+                "cargo:rustc-link-search=native={}/build/deps/usrsctp/usrsctplib/{}",
+                out_dir, profile
+            );
+        } else {
+            println!(
+                "cargo:rustc-link-search=native={}/build/deps/usrsctp/usrsctplib",
+                out_dir
+            );
+        }
         println!("cargo:rustc-link-lib=static=usrsctp");
 
         if cfg!(feature = "media") {
             // Link static libsrtp
-            println!(
-                "cargo:rustc-link-search=native={}/build/deps/libsrtp",
-                out_dir
-            );
+            if cfg!(target_env = "msvc") {
+                println!(
+                    "cargo:rustc-link-search=native={}/build/deps/libsrtp/{}",
+                    out_dir, profile
+                );
+            } else {
+                println!(
+                    "cargo:rustc-link-search=native={}/build/deps/libsrtp",
+                    out_dir
+                );
+            }
             println!("cargo:rustc-link-lib=static=srtp2");
         }
 
         // Link static libdatachannel
-        println!("cargo:rustc-link-search=native={}/build", out_dir);
+        if cfg!(target_env = "msvc") {
+            println!(
+                "cargo:rustc-link-search=native={}/build/{}",
+                out_dir, profile
+            );
+        } else {
+            println!("cargo:rustc-link-search=native={}/build", out_dir);
+        }
         println!("cargo:rustc-link-lib=static=datachannel-static");
     } else {
         // Link dynamic libdatachannel
