@@ -151,7 +151,7 @@ impl Clone for RtcConfig {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 #[cfg_attr(any(not(target_os = "windows"), target_env = "gnu"), repr(u32))]
 #[cfg_attr(all(target_os = "windows", not(target_env = "gnu")), repr(i32))]
 pub enum CertificateType {
@@ -160,7 +160,7 @@ pub enum CertificateType {
     RSA = sys::rtcCertificateType_RTC_CERTIFICATE_RSA,
 }
 
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 #[cfg_attr(any(not(target_os = "windows"), target_env = "gnu"), repr(u32))]
 #[cfg_attr(all(target_os = "windows", not(target_env = "gnu")), repr(i32))]
 pub enum TransportPolicy {

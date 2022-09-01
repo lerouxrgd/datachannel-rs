@@ -8,7 +8,7 @@ fn env_var_rerun(name: &str) -> Result<String, env::VarError> {
 }
 
 #[cfg(feature = "static")]
-pub fn get_openssl_root_dir() -> PathBuf {
+pub fn build_and_get_openssl() -> PathBuf {
     let artifacts = openssl_src::Build::new().build();
     artifacts.lib_dir().parent().unwrap().to_path_buf()
 }
@@ -29,11 +29,13 @@ fn main() {
             config.define("NO_MEDIA", "ON");
         }
 
-        config.define("OPENSSL_ROOT_DIR", get_openssl_root_dir());
+        config.define("OPENSSL_ROOT_DIR", build_and_get_openssl());
         config.define("OPENSSL_USE_STATIC_LIBS", "TRUE");
 
         config.build();
     }
+
+    ////////////////////////////////////////////////////////////////////////////////////
 
     let mut config = cmake::Config::new("libdatachannel");
     config.out_dir(&out_dir);
@@ -49,13 +51,11 @@ fn main() {
         if let Ok(openssl_root_dir) = env_var_rerun("OPENSSL_ROOT_DIR") {
             config.define("OPENSSL_ROOT_DIR", openssl_root_dir);
         }
-
-        if let Ok(openssl_libraries) = env_var_rerun("OPENSSL_LIBRARIES") {
-            config.define("OPENSSL_LIBRARIES", openssl_libraries);
-        }
     }
 
     config.build();
+
+    ////////////////////////////////////////////////////////////////////////////////////
 
     if cfg!(feature = "static") {
         // Link static libc++

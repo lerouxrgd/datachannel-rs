@@ -15,7 +15,7 @@ use crate::error::{check, Error, Result};
 use crate::logger;
 use crate::track::{RtcTrack, TrackHandler, TrackInit};
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum ConnectionState {
     New,
     Connecting,
@@ -39,7 +39,7 @@ impl ConnectionState {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum GatheringState {
     New,
     InProgress,
@@ -57,7 +57,7 @@ impl GatheringState {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum SignalingState {
     Stable,
     HaveLocalOffer,
@@ -79,7 +79,7 @@ impl SignalingState {
     }
 }
 
-#[derive(Debug, PartialEq, Hash)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Hash)]
 pub struct CandidatePair {
     pub local: String,
     pub remote: String,
@@ -125,7 +125,7 @@ pub mod serde_sdp {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum SdpType {
     Answer,
@@ -155,7 +155,7 @@ impl SdpType {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct IceCandidate {
     pub candidate: String,
     #[serde(rename = "sdpMid")]
