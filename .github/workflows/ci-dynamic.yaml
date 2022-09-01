@@ -1,0 +1,36 @@
+name: Build & test with dynamic deps
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-and-test:
+    name: Build and test
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        feature: ["default", "media"]
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: recursive
+      - if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt update
+          sudo apt install libssl-dev libsrtp2-dev
+      - if: matrix.os == 'macos-latest'
+        run: |
+          HOMEBREW_NO_INSTALL_CLEANUP=1 brew reinstall openssl@1.1
+          echo "OPENSSL_ROOT_DIR"=/usr/local/opt/openssl@1.1 >> $GITHUB_ENV
+      - run: rustup update
+      - run: cargo build --features ${{ matrix.feature }}
+      - run: cargo fmt --check --all
+      - run: cargo clippy --features ${{ matrix.feature }} -- -D warnings
+      - run: cargo test --features ${{ matrix.feature }} --verbose
