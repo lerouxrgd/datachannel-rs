@@ -8,7 +8,7 @@ use std::sync::Once;
 
 mod config;
 mod datachannel;
-mod error;
+pub mod error;
 mod logger;
 mod peerconnection;
 mod track;
