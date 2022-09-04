@@ -8,10 +8,12 @@ use std::sync::Once;
 
 mod config;
 mod datachannel;
-pub mod error;
+mod error;
 mod logger;
 mod peerconnection;
 mod track;
+
+pub use error::{Error, Result};
 
 static INIT_LOGGING: Once = Once::new();
 
