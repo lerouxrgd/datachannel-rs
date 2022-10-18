@@ -7,7 +7,7 @@ fn env_var_rerun(name: &str) -> Result<String, env::VarError> {
     env::var(name)
 }
 
-#[cfg(feature = "static")]
+#[cfg(feature = "vendored")]
 pub fn build_and_get_openssl() -> PathBuf {
     let artifacts = openssl_src::Build::new().build();
     artifacts.lib_dir().parent().unwrap().to_path_buf()
@@ -16,7 +16,7 @@ pub fn build_and_get_openssl() -> PathBuf {
 fn main() {
     let out_dir = env::var("OUT_DIR").unwrap();
 
-    #[cfg(feature = "static")]
+    #[cfg(feature = "vendored")]
     {
         let mut config = cmake::Config::new("libdatachannel");
         config.build_target("datachannel-static");
@@ -46,7 +46,7 @@ fn main() {
         config.define("NO_MEDIA", "ON");
     }
 
-    #[cfg(not(feature = "static"))]
+    #[cfg(not(feature = "vendored"))]
     {
         if let Ok(openssl_root_dir) = env_var_rerun("OPENSSL_ROOT_DIR") {
             config.define("OPENSSL_ROOT_DIR", openssl_root_dir);
@@ -60,11 +60,11 @@ fn main() {
 
     ////////////////////////////////////////////////////////////////////////////////////
 
-    if cfg!(feature = "static") {
+    if cfg!(feature = "vendored") {
         let profile = config.get_profile();
 
         // Link static libc++
-        #[cfg(feature = "static")]
+        #[cfg(feature = "vendored")]
         cpp_build::Config::new()
             .include(format!("{}/lib", out_dir))
             .build("src/lib.rs");

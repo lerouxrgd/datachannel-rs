@@ -35,5 +35,5 @@ uuid = { version = "0.8", features = ["serde", "v4"] }
 default = ["log"]
 log = ["dep:log"]
 tracing = ["dep:tracing"]
-static = ["datachannel-sys/static"]
+vendored = ["datachannel-sys/vendored"]
 media = ["datachannel-sys/media"]
