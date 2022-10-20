@@ -106,6 +106,9 @@ impl DataChannelInit {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Hash)]
+pub struct DataChannelId(pub(crate) i32);
+
 #[allow(unused_variables)]
 pub trait DataChannelHandler {
     fn on_open(&mut self) {}
@@ -117,7 +120,7 @@ pub trait DataChannelHandler {
 }
 
 pub struct RtcDataChannel<D> {
-    id: i32,
+    id: DataChannelId,
     dc_handler: D,
 }
 
@@ -125,40 +128,40 @@ impl<D> RtcDataChannel<D>
 where
     D: DataChannelHandler + Send,
 {
-    pub(crate) fn new(id: i32, dc_handler: D) -> Result<Box<Self>> {
+    pub(crate) fn new(id: DataChannelId, dc_handler: D) -> Result<Box<Self>> {
         unsafe {
             let mut rtc_dc = Box::new(RtcDataChannel { id, dc_handler });
             let ptr = &mut *rtc_dc;
 
-            sys::rtcSetUserPointer(id, ptr as *mut _ as *mut c_void);
+            sys::rtcSetUserPointer(id.0, ptr as *mut _ as *mut c_void);
 
             check(sys::rtcSetOpenCallback(
-                id,
+                id.0,
                 Some(RtcDataChannel::<D>::open_cb),
             ))?;
 
             check(sys::rtcSetClosedCallback(
-                id,
+                id.0,
                 Some(RtcDataChannel::<D>::closed_cb),
             ))?;
 
             check(sys::rtcSetErrorCallback(
-                id,
+                id.0,
                 Some(RtcDataChannel::<D>::error_cb),
             ))?;
 
             check(sys::rtcSetMessageCallback(
-                id,
+                id.0,
                 Some(RtcDataChannel::<D>::message_cb),
             ))?;
 
             check(sys::rtcSetBufferedAmountLowCallback(
-                id,
+                id.0,
                 Some(RtcDataChannel::<D>::buffered_amount_low_cb),
             ))?;
 
             check(sys::rtcSetAvailableCallback(
-                id,
+                id.0,
                 Some(RtcDataChannel::<D>::available_cb),
             ))?;
 
@@ -202,104 +205,31 @@ where
         rtc_dc.dc_handler.on_available()
     }
 
+    pub fn id(&self) -> DataChannelId {
+        self.id
+    }
+
     pub fn send(&mut self, msg: &[u8]) -> Result<()> {
         check(unsafe {
-            sys::rtcSendMessage(self.id, msg.as_ptr() as *const c_char, msg.len() as i32)
+            sys::rtcSendMessage(self.id.0, msg.as_ptr() as *const c_char, msg.len() as i32)
         })
         .map(|_| ())
     }
 
     pub fn label(&self) -> String {
-        let buf_size = check(unsafe {
-            sys::rtcGetDataChannelLabel(self.id, ptr::null_mut() as *mut c_char, 0)
-        })
-        .expect("Couldn't get buffer size") as usize;
-
-        let mut buf = vec![0; buf_size];
-        match check(unsafe {
-            sys::rtcGetDataChannelLabel(self.id, buf.as_mut_ptr() as *mut c_char, buf_size as i32)
-        }) {
-            Ok(_) => match crate::ffi_string(&buf) {
-                Ok(label) => label,
-                Err(err) => {
-                    logger::error!(
-                        "Couldn't get label for RtcDataChannel id={} {:p}, {}",
-                        self.id,
-                        self,
-                        err
-                    );
-                    String::default()
-                }
-            },
-
-            Err(err) => {
-                logger::warn!(
-                    "Couldn't get label for RtcDataChannel id={} {:p}, {}",
-                    self.id,
-                    self,
-                    err
-                );
-                String::default()
-            }
-        }
+        DataChannelInfo::label(self.id)
     }
 
     pub fn protocol(&self) -> Option<String> {
-        let buf_size = check(unsafe {
-            sys::rtcGetDataChannelProtocol(self.id, ptr::null_mut() as *mut c_char, 0)
-        })
-        .expect("Couldn't get buffer size") as usize;
-
-        let mut buf = vec![0; buf_size];
-        match check(unsafe {
-            sys::rtcGetDataChannelProtocol(
-                self.id,
-                buf.as_mut_ptr() as *mut c_char,
-                buf_size as i32,
-            )
-        }) {
-            Ok(1) => None,
-            Ok(_) => match crate::ffi_string(&buf) {
-                Ok(protocol) => Some(protocol),
-                Err(err) => {
-                    logger::error!(
-                        "Couldn't get protocol for RtcDataChannel id={} {:p}, {}",
-                        self.id,
-                        self,
-                        err
-                    );
-                    None
-                }
-            },
-            Err(err) => {
-                logger::warn!(
-                    "Couldn't get protocol for RtcDataChannel id={} {:p}, {}",
-                    self.id,
-                    self,
-                    err
-                );
-                None
-            }
-        }
+        DataChannelInfo::protocol(self.id)
     }
 
     pub fn reliability(&self) -> Reliability {
-        let mut reliability = sys::rtcReliability {
-            unordered: false,
-            unreliable: false,
-            maxPacketLifeTime: 0,
-            maxRetransmits: 0,
-        };
-
-        check(unsafe { sys::rtcGetDataChannelReliability(self.id, &mut reliability) })
-            .expect("Couldn't get RtcDataChannel reliability");
-
-        Reliability::from_raw(reliability)
+        DataChannelInfo::reliability(self.id)
     }
 
     pub fn stream(&self) -> usize {
-        check(unsafe { sys::rtcGetDataChannelStream(self.id) })
-            .expect("Couldn't get RtcDataChannel stream") as usize
+        DataChannelInfo::stream(self.id)
     }
 
     /// Number of bytes currently queued to be sent over the data channel.
@@ -308,11 +238,11 @@ where
     ///
     /// [`available_amount`]: RtcDataChannel::available_amount
     pub fn buffered_amount(&self) -> usize {
-        match check(unsafe { sys::rtcGetBufferedAmount(self.id) }) {
+        match check(unsafe { sys::rtcGetBufferedAmount(self.id.0) }) {
             Ok(amount) => amount as usize,
             Err(err) => {
                 logger::error!(
-                    "Couldn't get buffered_amount for RtcDataChannel id={} {:p}, {}",
+                    "Couldn't get buffered_amount for RtcDataChannel id={:?} {:p}, {}",
                     self.id,
                     self,
                     err
@@ -334,7 +264,7 @@ where
     /// [`on_bufferd_amount_low`]: RtcDataChannel::on_bufferd_amount_low
     pub fn set_buffered_amount_low_threshold(&mut self, amount: usize) -> Result<()> {
         let amount = i32::try_from(amount).map_err(|_| Error::InvalidArg)?;
-        check(unsafe { sys::rtcSetBufferedAmountLowThreshold(self.id, amount) })?;
+        check(unsafe { sys::rtcSetBufferedAmountLowThreshold(self.id.0, amount) })?;
         Ok(())
     }
 
@@ -344,11 +274,11 @@ where
     ///
     /// [`buffered_amount`]: RtcDataChannel::buffered_amount
     pub fn available_amount(&self) -> usize {
-        match check(unsafe { sys::rtcGetAvailableAmount(self.id) }) {
+        match check(unsafe { sys::rtcGetAvailableAmount(self.id.0) }) {
             Ok(amount) => amount as usize,
             Err(err) => {
                 logger::error!(
-                    "Couldn't get available_amount for RtcDataChannel id={} {:p}, {}",
+                    "Couldn't get available_amount for RtcDataChannel id={:?} {:p}, {}",
                     self.id,
                     self,
                     err
@@ -361,13 +291,99 @@ where
 
 impl<D> Drop for RtcDataChannel<D> {
     fn drop(&mut self) {
-        if let Err(err) = check(unsafe { sys::rtcDeleteDataChannel(self.id) }) {
+        if let Err(err) = check(unsafe { sys::rtcDeleteDataChannel(self.id.0) }) {
             logger::error!(
-                "Error while dropping RtcDataChannel id={} {:p}: {}",
+                "Error while dropping RtcDataChannel id={:?} {:p}: {}",
                 self.id,
                 self,
                 err
             );
         }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct DataChannelInfo {
+    pub id: DataChannelId,
+    pub label: String,
+    pub protocol: Option<String>,
+    pub reliability: Reliability,
+    pub stream: usize,
+}
+
+impl DataChannelInfo {
+    pub(crate) fn label(id: DataChannelId) -> String {
+        let buf_size =
+            check(unsafe { sys::rtcGetDataChannelLabel(id.0, ptr::null_mut() as *mut c_char, 0) })
+                .expect("Couldn't get buffer size") as usize;
+
+        let mut buf = vec![0; buf_size];
+        match check(unsafe {
+            sys::rtcGetDataChannelLabel(id.0, buf.as_mut_ptr() as *mut c_char, buf_size as i32)
+        }) {
+            Ok(_) => match crate::ffi_string(&buf) {
+                Ok(label) => label,
+                Err(err) => {
+                    logger::error!("Couldn't get label for RtcDataChannel id={:?}, {}", id, err);
+                    String::default()
+                }
+            },
+            Err(err) => {
+                logger::warn!("Couldn't get label for RtcDataChannel id={:?}, {}", id, err);
+                String::default()
+            }
+        }
+    }
+
+    pub(crate) fn protocol(id: DataChannelId) -> Option<String> {
+        let buf_size = check(unsafe {
+            sys::rtcGetDataChannelProtocol(id.0, ptr::null_mut() as *mut c_char, 0)
+        })
+        .expect("Couldn't get buffer size") as usize;
+
+        let mut buf = vec![0; buf_size];
+        match check(unsafe {
+            sys::rtcGetDataChannelProtocol(id.0, buf.as_mut_ptr() as *mut c_char, buf_size as i32)
+        }) {
+            Ok(1) => None,
+            Ok(_) => match crate::ffi_string(&buf) {
+                Ok(protocol) => Some(protocol),
+                Err(err) => {
+                    logger::error!(
+                        "Couldn't get protocol for RtcDataChannel id={:?}, {}",
+                        id,
+                        err
+                    );
+                    None
+                }
+            },
+            Err(err) => {
+                logger::warn!(
+                    "Couldn't get protocol for RtcDataChannel id={:?}, {}",
+                    id,
+                    err
+                );
+                None
+            }
+        }
+    }
+
+    pub(crate) fn reliability(id: DataChannelId) -> Reliability {
+        let mut reliability = sys::rtcReliability {
+            unordered: false,
+            unreliable: false,
+            maxPacketLifeTime: 0,
+            maxRetransmits: 0,
+        };
+
+        check(unsafe { sys::rtcGetDataChannelReliability(id.0, &mut reliability) })
+            .expect("Couldn't get RtcDataChannel reliability");
+
+        Reliability::from_raw(reliability)
+    }
+
+    pub(crate) fn stream(id: DataChannelId) -> usize {
+        check(unsafe { sys::rtcGetDataChannelStream(id.0) })
+            .expect("Couldn't get RtcDataChannel stream") as usize
     }
 }

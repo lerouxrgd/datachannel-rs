@@ -13,7 +13,7 @@ mod logger;
 mod peerconnection;
 mod track;
 
-pub use error::{Error, Result};
+pub use crate::error::{Error, Result};
 
 static INIT_LOGGING: Once = Once::new();
 
@@ -89,10 +89,14 @@ pub fn cleanup() {
 }
 
 pub use crate::config::{CertificateType, RtcConfig, TransportPolicy};
-pub use crate::datachannel::{DataChannelHandler, DataChannelInit, Reliability, RtcDataChannel};
+pub use crate::datachannel::{
+    DataChannelHandler, DataChannelId, DataChannelInfo, DataChannelInit, Reliability,
+    RtcDataChannel,
+};
 pub use crate::peerconnection::{
     fmt_sdp, serde_sdp, CandidatePair, ConnectionState, GatheringState, IceCandidate,
-    PeerConnectionHandler, RtcPeerConnection, SdpType, SessionDescription, SignalingState,
+    PeerConnectionHandler, PeerConnectionId, RtcPeerConnection, SdpType, SessionDescription,
+    SignalingState,
 };
 pub use crate::track::{Codec, Direction, RtcTrack, TrackHandler, TrackInit};
 pub use webrtc_sdp as sdp;

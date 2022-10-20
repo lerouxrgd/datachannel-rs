@@ -46,7 +46,7 @@ and a instance of `PeerConnectionHandler`.
 Here is the basic workflow:
 
 ```rust
-use datachannel::{DataChannelHandler, PeerConnectionHandler, RtcConfig, RtcPeerConnection};
+use datachannel::{DataChannelHandler, DataChannelInfo, PeerConnectionHandler, RtcConfig, RtcPeerConnection};
 
 struct MyChannel;
 
@@ -66,7 +66,7 @@ impl PeerConnectionHandler for MyConnection {
     type DCH = MyChannel;
 
     /// Used to create the `RtcDataChannel` received through `on_data_channel`.
-    fn data_channel_handler(&mut self) -> Self::DCH {
+    fn data_channel_handler(&mut self, _info: DataChannelInfo) -> Self::DCH {
         MyChannel
     }
 

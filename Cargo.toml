@@ -1,6 +1,6 @@
 [package]
 name = "datachannel"
-version = "0.7.10"
+version = "0.8.0"
 edition = "2021"
 description = "Rust wrappers for libdatachannel."
 repository = "https://github.com/lerouxrgd/datachannel-rs"

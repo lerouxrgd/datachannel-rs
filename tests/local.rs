@@ -5,8 +5,8 @@ use std::time::Duration;
 use crossbeam_channel::{self as chan, select};
 
 use datachannel::{
-    ConnectionState, DataChannelHandler, GatheringState, IceCandidate, PeerConnectionHandler,
-    RtcConfig, RtcDataChannel, RtcPeerConnection, SessionDescription,
+    ConnectionState, DataChannelHandler, DataChannelInfo, GatheringState, IceCandidate,
+    PeerConnectionHandler, RtcConfig, RtcDataChannel, RtcPeerConnection, SessionDescription,
 };
 
 #[cfg(feature = "log")]
@@ -84,7 +84,7 @@ impl LocalConn {
 impl PeerConnectionHandler for LocalConn {
     type DCH = Pong;
 
-    fn data_channel_handler(&mut self) -> Pong {
+    fn data_channel_handler(&mut self, _info: DataChannelInfo) -> Pong {
         self.pong.clone()
     }
 
