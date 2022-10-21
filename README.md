@@ -28,7 +28,7 @@ pub trait DataChannelHandler {
 pub trait PeerConnectionHandler {
     type DCH;
 
-    fn data_channel_handler(&mut self) -> Self::DCH;
+    fn data_channel_handler(&mut self, info: DataChannelInfo) -> Self::DCH;
 
     fn on_description(&mut self, sess_desc: SessionDescription) {}
     fn on_candidate(&mut self, cand: IceCandidate) {}
