@@ -46,7 +46,7 @@ and a instance of `PeerConnectionHandler`.
 Here is the basic workflow:
 
 ```rust
-use datachannel::{DataChannelHandler, PeerConnectionHandler, RtcConfig, RtcPeerConnection};
+use datachannel::{DataChannelHandler, DataChannelInfo, PeerConnectionHandler, RtcConfig, RtcPeerConnection};
 
 struct MyChannel;
 
@@ -66,7 +66,7 @@ impl PeerConnectionHandler for MyConnection {
     type DCH = MyChannel;
 
     /// Used to create the `RtcDataChannel` received through `on_data_channel`.
-    fn data_channel_handler(&mut self) -> Self::DCH {
+    fn data_channel_handler(&mut self, _info: DataChannelInfo) -> Self::DCH {
         MyChannel
     }
 
@@ -94,11 +94,13 @@ See also [async-datachannel][] for an async-based implementation.
 
 ## Cargo features
 
-- `log` _Default_ Enables logging provided by the `log` crate (mutually exclusive with
-  `tracing`).
-- `tracing` Enables logging provided by the `tracing` crate (mutally exclusive with `log`).
-- `static` Build and link statically (with all dependencies, including `OpenSSL`).
-- `media` Enables media support through `libdatachannel`.
+- **log** (_default_) Enables logging provided by the `log` crate (mutually exclusive with
+  **tracing**).
+- **tracing** Enables logging provided by the `tracing` crate (mutally exclusive with
+  **log**).
+- **vendored** Builds libdatachannel and its dependencies statically and bundles them in
+  the build (including `OpenSSL`).
+- **media** Enables media support through `libdatachannel`.
 
 ## Building
 
@@ -110,12 +112,6 @@ Clone the repo recursively:
 ```sh
 git clone --recursive https://github.com/lerouxrgd/datachannel-rs.git
 ```
-
-### Static build
-
-By default [libdatachannel][] will be built and linked dynamically. However there is a
-`static` Cargo feature that will build and link it statically (with all its
-dependencies, including `OpenSSL`).
 
 ### Apple macOS
 

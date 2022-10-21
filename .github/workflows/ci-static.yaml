@@ -16,7 +16,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        feature: ["static", "static,media"]
+        feature: ["vendored", "vendored,media"]
     steps:
       - uses: actions/checkout@v3
         with:

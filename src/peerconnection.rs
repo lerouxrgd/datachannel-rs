@@ -12,8 +12,8 @@ use webrtc_sdp::{media_type::SdpMedia, parse_sdp, SdpSession};
 use crate::config::RtcConfig;
 use crate::datachannel::{DataChannelHandler, DataChannelInit, RtcDataChannel};
 use crate::error::{check, Error, Result};
-use crate::logger;
 use crate::track::{RtcTrack, TrackHandler, TrackInit};
+use crate::{logger, DataChannelId, DataChannelInfo};
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum ConnectionState {
@@ -167,7 +167,7 @@ pub struct IceCandidate {
 pub trait PeerConnectionHandler {
     type DCH;
 
-    fn data_channel_handler(&mut self) -> Self::DCH;
+    fn data_channel_handler(&mut self, info: DataChannelInfo) -> Self::DCH;
 
     fn on_description(&mut self, sess_desc: SessionDescription) {}
     fn on_candidate(&mut self, cand: IceCandidate) {}
@@ -177,9 +177,12 @@ pub trait PeerConnectionHandler {
     fn on_data_channel(&mut self, data_channel: Box<RtcDataChannel<Self::DCH>>) {}
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Hash)]
+pub struct PeerConnectionId(i32);
+
 pub struct RtcPeerConnection<P> {
     lock: ReentrantMutex<()>,
-    id: i32,
+    id: PeerConnectionId,
     pc_handler: P,
 }
 
@@ -196,7 +199,7 @@ where
             let id = check(sys::rtcCreatePeerConnection(&config.as_raw()))?;
             let mut rtc_pc = Box::new(RtcPeerConnection {
                 lock: ReentrantMutex::new(()),
-                id,
+                id: PeerConnectionId(id),
                 pc_handler,
             });
             let ptr = &mut *rtc_pc;
@@ -317,8 +320,17 @@ where
     unsafe extern "C" fn data_channel_cb(_: i32, id: i32, ptr: *mut c_void) {
         let rtc_pc = &mut *(ptr as *mut RtcPeerConnection<P>);
 
+        let id = DataChannelId(id);
+        let info = DataChannelInfo {
+            id,
+            label: DataChannelInfo::label(id),
+            protocol: DataChannelInfo::protocol(id),
+            reliability: DataChannelInfo::reliability(id),
+            stream: DataChannelInfo::stream(id),
+        };
+
         let guard = rtc_pc.lock.lock();
-        let dc = rtc_pc.pc_handler.data_channel_handler();
+        let dc = rtc_pc.pc_handler.data_channel_handler(info);
         drop(guard);
 
         match RtcDataChannel::new(id, dc) {
@@ -327,12 +339,16 @@ where
                 rtc_pc.pc_handler.on_data_channel(dc);
             }
             Err(err) => logger::error!(
-                "Couldn't create RtcDataChannel with id={} from RtcPeerConnection {:p}: {}",
+                "Couldn't create RtcDataChannel with id={:?} from RtcPeerConnection {:p}: {}",
                 id,
                 ptr,
                 err
             ),
         }
+    }
+
+    pub fn id(&self) -> PeerConnectionId {
+        self.id
     }
 
     /// Creates a boxed [`RtcDataChannel`].
@@ -345,7 +361,9 @@ where
         C: DataChannelHandler + Send,
     {
         let label = CString::new(label)?;
-        let id = check(unsafe { sys::rtcCreateDataChannel(self.id, label.as_ptr()) })?;
+        let id = DataChannelId(check(unsafe {
+            sys::rtcCreateDataChannel(self.id.0, label.as_ptr())
+        })?);
         RtcDataChannel::new(id, dc_handler)
     }
 
@@ -359,9 +377,9 @@ where
         C: DataChannelHandler + Send,
     {
         let label = CString::new(label)?;
-        let id = check(unsafe {
-            sys::rtcCreateDataChannelEx(self.id, label.as_ptr(), &dc_init.as_raw()?)
-        })?;
+        let id = DataChannelId(check(unsafe {
+            sys::rtcCreateDataChannelEx(self.id.0, label.as_ptr(), &dc_init.as_raw()?)
+        })?);
         RtcDataChannel::new(id, dc_handler)
     }
 
@@ -372,7 +390,7 @@ where
     {
         let desc = sdp_media.to_string();
         let desc = CString::new(desc.strip_prefix("m=").unwrap_or(&desc))?;
-        let id = check(unsafe { sys::rtcAddTrack(self.id, desc.as_ptr()) })?;
+        let id = check(unsafe { sys::rtcAddTrack(self.id.0, desc.as_ptr()) })?;
         RtcTrack::new(id, t_handler)
     }
 
@@ -380,27 +398,27 @@ where
     where
         C: TrackHandler + Send,
     {
-        let id = check(unsafe { sys::rtcAddTrackEx(self.id, &t_init.as_raw()) })?;
+        let id = check(unsafe { sys::rtcAddTrackEx(self.id.0, &t_init.as_raw()) })?;
         RtcTrack::new(id, t_handler)
     }
 
     pub fn set_local_description(&mut self, sdp_type: SdpType) -> Result<()> {
         let sdp_type = CString::new(sdp_type.val())?;
-        check(unsafe { sys::rtcSetLocalDescription(self.id, sdp_type.as_ptr()) })?;
+        check(unsafe { sys::rtcSetLocalDescription(self.id.0, sdp_type.as_ptr()) })?;
         Ok(())
     }
 
     pub fn set_remote_description(&mut self, sess_desc: &SessionDescription) -> Result<()> {
         let sdp = CString::new(sess_desc.sdp.to_string())?;
         let sdp_type = CString::new(sess_desc.sdp_type.val())?;
-        check(unsafe { sys::rtcSetRemoteDescription(self.id, sdp.as_ptr(), sdp_type.as_ptr()) })?;
+        check(unsafe { sys::rtcSetRemoteDescription(self.id.0, sdp.as_ptr(), sdp_type.as_ptr()) })?;
         Ok(())
     }
 
     pub fn add_remote_candidate(&mut self, cand: &IceCandidate) -> Result<()> {
         let mid = CString::new(cand.mid.clone())?;
         let cand = CString::new(cand.candidate.clone())?;
-        unsafe { sys::rtcAddRemoteCandidate(self.id, cand.as_ptr(), mid.as_ptr()) };
+        unsafe { sys::rtcAddRemoteCandidate(self.id.0, cand.as_ptr(), mid.as_ptr()) };
         Ok(())
     }
 
@@ -453,7 +471,7 @@ where
     pub fn selected_candidate_pair(&self) -> Option<CandidatePair> {
         let buf_size = check(unsafe {
             sys::rtcGetSelectedCandidatePair(
-                self.id,
+                self.id.0,
                 ptr::null_mut() as *mut c_char,
                 0,
                 ptr::null_mut() as *mut c_char,
@@ -473,7 +491,7 @@ where
         let mut remote_buf = vec![0; buf_size];
         match check(unsafe {
             sys::rtcGetSelectedCandidatePair(
-                self.id,
+                self.id.0,
                 local_buf.as_mut_ptr() as *mut c_char,
                 buf_size as i32,
                 remote_buf.as_mut_ptr() as *mut c_char,
@@ -512,7 +530,8 @@ where
         str_fn: unsafe extern "C" fn(i32, *mut c_char, i32) -> i32,
         prop: &str,
     ) -> Option<String> {
-        let buf_size = match check(unsafe { str_fn(self.id, ptr::null_mut() as *mut c_char, 0) }) {
+        let buf_size = match check(unsafe { str_fn(self.id.0, ptr::null_mut() as *mut c_char, 0) })
+        {
             Ok(buf_size) => buf_size as usize,
             Err(err) => {
                 logger::error!("Couldn't get buffer size: {}", err);
@@ -521,7 +540,8 @@ where
         };
 
         let mut buf = vec![0; buf_size];
-        match check(unsafe { str_fn(self.id, buf.as_mut_ptr() as *mut c_char, buf_size as i32) }) {
+        match check(unsafe { str_fn(self.id.0, buf.as_mut_ptr() as *mut c_char, buf_size as i32) })
+        {
             Ok(_) => match String::from_utf8(buf) {
                 Ok(local) => Some(local.trim_matches(char::from(0)).to_string()),
                 Err(err) => {
@@ -550,9 +570,9 @@ where
 
 impl<P> Drop for RtcPeerConnection<P> {
     fn drop(&mut self) {
-        if let Err(err) = check(unsafe { sys::rtcDeletePeerConnection(self.id) }) {
+        if let Err(err) = check(unsafe { sys::rtcDeletePeerConnection(self.id.0) }) {
             logger::error!(
-                "Error while dropping RtcPeerConnection id={} {:p}: {}",
+                "Error while dropping RtcPeerConnection id={:?} {:p}: {}",
                 self.id,
                 self,
                 err
