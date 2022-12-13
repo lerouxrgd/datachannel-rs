@@ -1,13 +1,13 @@
 [package]
 name = "datachannel-sys"
-version = "0.17.11"
+version = "0.18.0"
 authors = ["Romain Leroux <romain@leroux.dev>"]
 edition = "2021"
 links = "datachannel"
 description = "Native bindings to libdatachannel."
 repository = "https://github.com/lerouxrgd/datachannel-rs"
 categories = ["network-programming"]
-license = "LGPL-2.1"
+license = "MPL-2.0"
 
 exclude = [
   "libdatachannel/examples",

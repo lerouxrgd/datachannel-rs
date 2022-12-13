@@ -22,6 +22,7 @@ pub struct RtcConfig {
     pub mtu: i32,
     pub max_message_size: i32,
     pub disable_auto_negotiation: bool,
+    pub force_media_transport: bool,
 }
 
 unsafe impl Send for RtcConfig {}
@@ -49,6 +50,7 @@ impl RtcConfig {
             mtu: 0,
             max_message_size: 0,
             disable_auto_negotiation: false,
+            force_media_transport: false,
         }
     }
 
@@ -102,6 +104,16 @@ impl RtcConfig {
         self
     }
 
+    pub fn disable_auto_negotiation(mut self) -> Self {
+        self.disable_auto_negotiation = true;
+        self
+    }
+
+    pub fn force_media_transport(mut self) -> Self {
+        self.force_media_transport = true;
+        self
+    }
+
     pub(crate) fn as_raw(&self) -> sys::rtcConfiguration {
         sys::rtcConfiguration {
             iceServers: self.ice_servers_ptrs.as_ptr() as *mut *const c_char,
@@ -125,6 +137,7 @@ impl RtcConfig {
             portRangeEnd: self.port_range_end,
             mtu: self.mtu,
             maxMessageSize: self.max_message_size,
+            forceMediaTransport: self.force_media_transport,
         }
     }
 }
@@ -147,6 +160,7 @@ impl Clone for RtcConfig {
             port_range_end: self.port_range_end,
             mtu: self.mtu,
             max_message_size: self.max_message_size,
+            force_media_transport: self.force_media_transport,
         }
     }
 }
