@@ -1,6 +1,9 @@
 use std::env;
 use std::path::PathBuf;
 
+#[cfg(feature = "vendored")]
+use once_cell::sync::OnceCell;
+
 #[allow(dead_code)]
 fn env_var_rerun(name: &str) -> Result<String, env::VarError> {
     println!("cargo:rerun-if-env-changed={}", name);
@@ -8,9 +11,9 @@ fn env_var_rerun(name: &str) -> Result<String, env::VarError> {
 }
 
 #[cfg(feature = "vendored")]
-pub fn build_and_get_openssl() -> PathBuf {
-    let artifacts = openssl_src::Build::new().build();
-    artifacts.lib_dir().parent().unwrap().to_path_buf()
+pub fn openssl_artifacts() -> &'static openssl_src::Artifacts {
+    static INSTANCE: OnceCell<openssl_src::Artifacts> = OnceCell::new();
+    INSTANCE.get_or_init(|| openssl_src::Build::new().build())
 }
 
 fn main() {
@@ -29,7 +32,8 @@ fn main() {
             config.define("NO_MEDIA", "ON");
         }
 
-        config.define("OPENSSL_ROOT_DIR", build_and_get_openssl());
+        let openssl_root_dir = openssl_artifacts().lib_dir().parent().unwrap();
+        config.define("OPENSSL_ROOT_DIR", openssl_root_dir.to_path_buf());
         config.define("OPENSSL_USE_STATIC_LIBS", "TRUE");
 
         config.build();
@@ -60,16 +64,20 @@ fn main() {
 
     ////////////////////////////////////////////////////////////////////////////////////
 
-    if cfg!(feature = "vendored") {
+    #[cfg(feature = "vendored")]
+    {
         let profile = config.get_profile();
 
         // Link static libc++
-        #[cfg(feature = "vendored")]
         cpp_build::Config::new()
             .include(format!("{}/lib", out_dir))
             .build("src/lib.rs");
 
         // Link static openssl
+        println!(
+            "cargo:rustc-link-search=native={}",
+            openssl_artifacts().lib_dir().to_path_buf().display()
+        );
         if cfg!(target_env = "msvc") {
             println!("cargo:rustc-link-lib=static=libcrypto");
             println!("cargo:rustc-link-lib=static=libssl");
@@ -132,7 +140,10 @@ fn main() {
             println!("cargo:rustc-link-search=native={}/build", out_dir);
         }
         println!("cargo:rustc-link-lib=static=datachannel-static");
-    } else {
+    }
+
+    #[cfg(not(feature = "vendored"))]
+    {
         // Link dynamic libdatachannel
         println!("cargo:rustc-link-search=native={}/lib", out_dir);
         println!("cargo:rustc-link-lib=dylib=datachannel");

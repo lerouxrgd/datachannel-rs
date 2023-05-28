@@ -107,20 +107,14 @@ See also [async-datachannel][] for an async-based implementation.
 Note that `CMake` is required to compile [libdatachannel][] through
 [datachannel-sys](datachannel-sys).
 
-Clone the repo recursively:
-
-```sh
-git clone --recursive https://github.com/lerouxrgd/datachannel-rs.git
-```
-
 ### Apple macOS
 
 You probably need to set the following environment variables if your build fails with an
 `OpenSSL` related error.
 
 ```sh
-export OPENSSL_ROOT_DIR=/usr/local/Cellar/openssl@1.1/1.1.1i/
-export OPENSSL_LIBRARIES=/usr/local/Cellar/openssl@1.1/1.1.1i/lib
+export OPENSSL_ROOT_DIR=/usr/local/opt/openssl@3
+export OPENSSL_LIBRARIES=/usr/local/opt/openssl@3/lib
 ```
 
 With the paths of your local `OpenSSL` installation.
