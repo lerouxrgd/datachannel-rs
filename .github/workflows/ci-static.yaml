@@ -22,8 +22,6 @@ jobs:
         with:
           submodules: recursive
       - run: rustup update
-      - if: matrix.os == 'windows-latest'
-        run: echo "RUSTFLAGS=-Ctarget-feature=+crt-static" >> $GITHUB_ENV
       - run: cargo build --features ${{ matrix.feature }}
       - run: cargo fmt --check --all
       - run: cargo clippy --features ${{ matrix.feature }} -- -D warnings

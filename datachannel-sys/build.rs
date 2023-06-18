@@ -59,6 +59,12 @@ fn main() {
             config.define("OPENSSL_LIBRARIES", openssl_libraries);
         }
     }
+    #[cfg(feature = "vendored")]
+    if cfg!(target_env = "msvc") {
+        let openssl_root_dir = openssl_artifacts().lib_dir().parent().unwrap();
+        config.define("OPENSSL_ROOT_DIR", openssl_root_dir.to_path_buf());
+        config.define("OPENSSL_USE_STATIC_LIBS", "TRUE");
+    }
 
     config.build();
 
