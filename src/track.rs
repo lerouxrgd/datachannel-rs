@@ -3,8 +3,8 @@ use std::os::raw::c_char;
 use std::{ptr, slice};
 
 use datachannel_sys as sys;
-use webrtc_sdp::media_type::{parse_media, SdpMedia};
-use webrtc_sdp::SdpType;
+use webrtc_sdp::media_type::{parse_media_vector, SdpMedia};
+use webrtc_sdp::{parse_sdp_line, SdpLine};
 
 use crate::error::{check, Result};
 use crate::logger;
@@ -187,7 +187,7 @@ where
         .map(|_| ())
     }
 
-    pub fn description(&self) -> Option<SdpMedia> {
+    pub fn description(&self) -> Option<Vec<SdpMedia>> {
         let buf_size = check(unsafe {
             sys::rtcGetTrackDescription(self.id, ptr::null_mut() as *mut c_char, 0)
         })
@@ -219,20 +219,18 @@ where
                 .ok()
         })
         .and_then(|description| {
-            parse_media(&description)
-                .map_err(|err| {
-                    logger::error!(
-                        "Couldn't get description for RtcTrack id={} {:p}, {}",
-                        self.id,
-                        self,
-                        err
-                    );
-                })
+            description
+                .split('\n')
+                .enumerate()
+                .map(|(line_number, line)| parse_sdp_line(line, line_number))
+                .collect::<std::result::Result<Vec<SdpLine>, _>>()
+                .map_err(|err| logger::error!("Couldn't parse SdpLine: {}", err))
                 .ok()
         })
-        .and_then(|sdp_type| match sdp_type {
-            SdpType::Media(sdp_media_line) => Some(SdpMedia::new(sdp_media_line)),
-            _ => None,
+        .and_then(|mut sdp_lines| {
+            parse_media_vector(&mut sdp_lines)
+                .map_err(|err| logger::error!("Couldn't parse SdpMedia: {}", err))
+                .ok()
         })
     }
 

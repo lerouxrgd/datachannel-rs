@@ -27,7 +27,6 @@ fn main() {
 
         cmake_conf.define("NO_WEBSOCKET", "ON");
         cmake_conf.define("NO_EXAMPLES", "ON");
-
         if !cfg!(feature = "media") {
             cmake_conf.define("NO_MEDIA", "ON");
         }
@@ -118,9 +117,9 @@ fn main() {
     {
         let mut cmake_conf = cmake::Config::new("libdatachannel");
         cmake_conf.out_dir(&out_dir);
+
         cmake_conf.define("NO_WEBSOCKET", "ON");
         cmake_conf.define("NO_EXAMPLES", "ON");
-
         if !cfg!(feature = "media") {
             cmake_conf.define("NO_MEDIA", "ON");
         }
