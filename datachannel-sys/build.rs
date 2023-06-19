@@ -21,58 +21,24 @@ fn main() {
 
     #[cfg(feature = "vendored")]
     {
-        let mut config = cmake::Config::new("libdatachannel");
-        config.build_target("datachannel-static");
-        config.out_dir(&out_dir);
+        let mut cmake_conf = cmake::Config::new("libdatachannel");
+        cmake_conf.build_target("datachannel-static");
+        cmake_conf.out_dir(&out_dir);
 
-        config.define("NO_WEBSOCKET", "ON");
-        config.define("NO_EXAMPLES", "ON");
+        cmake_conf.define("NO_WEBSOCKET", "ON");
+        cmake_conf.define("NO_EXAMPLES", "ON");
 
         if !cfg!(feature = "media") {
-            config.define("NO_MEDIA", "ON");
+            cmake_conf.define("NO_MEDIA", "ON");
         }
 
         let openssl_root_dir = openssl_artifacts().lib_dir().parent().unwrap();
-        config.define("OPENSSL_ROOT_DIR", openssl_root_dir.to_path_buf());
-        config.define("OPENSSL_USE_STATIC_LIBS", "TRUE");
+        cmake_conf.define("OPENSSL_ROOT_DIR", openssl_root_dir.to_path_buf());
+        cmake_conf.define("OPENSSL_USE_STATIC_LIBS", "TRUE");
 
-        config.build();
-    }
+        cmake_conf.build();
 
-    ////////////////////////////////////////////////////////////////////////////////////
-
-    let mut config = cmake::Config::new("libdatachannel");
-    config.out_dir(&out_dir);
-    config.define("NO_WEBSOCKET", "ON");
-    config.define("NO_EXAMPLES", "ON");
-
-    if !cfg!(feature = "media") {
-        config.define("NO_MEDIA", "ON");
-    }
-
-    #[cfg(not(feature = "vendored"))]
-    {
-        if let Ok(openssl_root_dir) = env_var_rerun("OPENSSL_ROOT_DIR") {
-            config.define("OPENSSL_ROOT_DIR", openssl_root_dir);
-        }
-        if let Ok(openssl_libraries) = env_var_rerun("OPENSSL_LIBRARIES") {
-            config.define("OPENSSL_LIBRARIES", openssl_libraries);
-        }
-    }
-    #[cfg(feature = "vendored")]
-    if cfg!(target_env = "msvc") {
-        let openssl_root_dir = openssl_artifacts().lib_dir().parent().unwrap();
-        config.define("OPENSSL_ROOT_DIR", openssl_root_dir.to_path_buf());
-        config.define("OPENSSL_USE_STATIC_LIBS", "TRUE");
-    }
-
-    config.build();
-
-    ////////////////////////////////////////////////////////////////////////////////////
-
-    #[cfg(feature = "vendored")]
-    {
-        let profile = config.get_profile();
+        let profile = cmake_conf.get_profile();
 
         // Link static libc++
         cpp_build::Config::new()
@@ -150,13 +116,31 @@ fn main() {
 
     #[cfg(not(feature = "vendored"))]
     {
+        let mut cmake_conf = cmake::Config::new("libdatachannel");
+        cmake_conf.out_dir(&out_dir);
+        cmake_conf.define("NO_WEBSOCKET", "ON");
+        cmake_conf.define("NO_EXAMPLES", "ON");
+
+        if !cfg!(feature = "media") {
+            cmake_conf.define("NO_MEDIA", "ON");
+        }
+
+        if let Ok(openssl_root_dir) = env_var_rerun("OPENSSL_ROOT_DIR") {
+            cmake_conf.define("OPENSSL_ROOT_DIR", openssl_root_dir);
+        }
+        if let Ok(openssl_libraries) = env_var_rerun("OPENSSL_LIBRARIES") {
+            cmake_conf.define("OPENSSL_LIBRARIES", openssl_libraries);
+        }
+
+        cmake_conf.build();
+
         // Link dynamic libdatachannel
         println!("cargo:rustc-link-search=native={}/lib", out_dir);
         println!("cargo:rustc-link-lib=dylib=datachannel");
     }
 
     let bindings = bindgen::Builder::default()
-        .header(format!("{}/include/rtc/rtc.h", out_dir))
+        .header("libdatachannel/include/rtc/rtc.h")
         .generate()
         .expect("Unable to generate bindings");
 
