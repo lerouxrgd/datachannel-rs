@@ -1,6 +1,6 @@
 [package]
 name = "datachannel"
-version = "0.9.2"
+version = "0.10.0"
 edition = "2021"
 description = "Rust wrappers for libdatachannel."
 repository = "https://github.com/lerouxrgd/datachannel-rs"
@@ -21,8 +21,8 @@ webrtc-sdp = "0.3"
 [dev-dependencies]
 async-channel = "1"
 # async-std = { version = "1", features = ["attributes"] }
-# async-tungstenite = { version = "0.22", features = ["async-std-runtime"] }
-async-tungstenite = { version = "0.22", features = ["tokio-runtime"] }
+# async-tungstenite = { version = "0.23", features = ["async-std-runtime"] }
+async-tungstenite = { version = "0.23", features = ["tokio-runtime"] }
 crossbeam-channel = "0.5"
 env_logger = "0.10"
 futures-util = "0.3"
