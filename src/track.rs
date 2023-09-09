@@ -72,6 +72,7 @@ pub struct TrackInit {
     pub name: Option<CString>,
     pub msid: Option<CString>,
     pub track_id: Option<CString>,
+    pub profile: Option<CString>,
 }
 
 impl TrackInit {
@@ -93,6 +94,11 @@ impl TrackInit {
                 .map(|s| s.as_ptr())
                 .unwrap_or(std::ptr::null()),
             trackId: self
+                .track_id
+                .as_ref()
+                .map(|s| s.as_ptr())
+                .unwrap_or(std::ptr::null()),
+            profile: self
                 .track_id
                 .as_ref()
                 .map(|s| s.as_ptr())
