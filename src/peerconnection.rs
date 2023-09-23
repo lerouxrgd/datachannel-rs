@@ -79,6 +79,32 @@ impl SignalingState {
     }
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub enum IceState {
+    New,
+    Checking,
+    Connected,
+    Completed,
+    Failed,
+    Disconnected,
+    Closed,
+}
+
+impl IceState {
+    fn from_raw(state: sys::rtcIceState) -> Self {
+        match state {
+            sys::rtcIceState_RTC_ICE_NEW => Self::New,
+            sys::rtcIceState_RTC_ICE_CHECKING => Self::Checking,
+            sys::rtcIceState_RTC_ICE_CONNECTED => Self::Connected,
+            sys::rtcIceState_RTC_ICE_COMPLETED => Self::Completed,
+            sys::rtcIceState_RTC_ICE_FAILED => Self::Failed,
+            sys::rtcIceState_RTC_ICE_DISCONNECTED => Self::Disconnected,
+            sys::rtcIceState_RTC_ICE_CLOSED => Self::Closed,
+            _ => panic!("Unknown rtcIceState: {}", state),
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, PartialOrd, Hash)]
 pub struct CandidatePair {
     pub local: String,
@@ -174,6 +200,7 @@ pub trait PeerConnectionHandler {
     fn on_connection_state_change(&mut self, state: ConnectionState) {}
     fn on_gathering_state_change(&mut self, state: GatheringState) {}
     fn on_signaling_state_change(&mut self, state: SignalingState) {}
+    fn on_ice_state_change(&mut self, state: IceState) {}
     fn on_data_channel(&mut self, data_channel: Box<RtcDataChannel<Self::DCH>>) {}
 }
 
@@ -229,6 +256,11 @@ where
             check(sys::rtcSetSignalingStateChangeCallback(
                 id,
                 Some(RtcPeerConnection::<P>::signaling_state_cb),
+            ))?;
+
+            check(sys::rtcSetIceStateChangeCallback(
+                id,
+                Some(RtcPeerConnection::<P>::ice_state_cb),
             ))?;
 
             check(sys::rtcSetDataChannelCallback(
@@ -315,6 +347,15 @@ where
 
         let _guard = rtc_pc.lock.lock();
         rtc_pc.pc_handler.on_signaling_state_change(state);
+    }
+
+    unsafe extern "C" fn ice_state_cb(_: i32, state: sys::rtcIceState, ptr: *mut c_void) {
+        let rtc_pc = &mut *(ptr as *mut RtcPeerConnection<P>);
+
+        let state = IceState::from_raw(state);
+
+        let _guard = rtc_pc.lock.lock();
+        rtc_pc.pc_handler.on_ice_state_change(state);
     }
 
     unsafe extern "C" fn data_channel_cb(_: i32, id: i32, ptr: *mut c_void) {
