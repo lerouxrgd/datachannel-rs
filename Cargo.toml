@@ -1,6 +1,6 @@
 [package]
 name = "datachannel"
-version = "0.11.0"
+version = "0.11.1"
 edition = "2021"
 description = "Rust wrappers for libdatachannel."
 repository = "https://github.com/lerouxrgd/datachannel-rs"
@@ -10,7 +10,7 @@ license = "MPL-2.0"
 readme = "README.md"
 
 [dependencies]
-datachannel-sys = { path = "datachannel-sys", version = "0.19.1" }
+datachannel-sys = { path = "datachannel-sys", version = "0.19.4" }
 derivative = "2"
 log = { version = "0.4", optional = true }
 parking_lot = "0.12"
@@ -19,10 +19,10 @@ tracing = { version = "0.1", optional = true }
 webrtc-sdp = "0.3"
 
 [dev-dependencies]
-async-channel = "1"
+async-channel = "2"
 # async-std = { version = "1", features = ["attributes"] }
-# async-tungstenite = { version = "0.23", features = ["async-std-runtime"] }
-async-tungstenite = { version = "0.23", features = ["tokio-runtime"] }
+# async-tungstenite = { version = "0.24", features = ["async-std-runtime"] }
+async-tungstenite = { version = "0.24", features = ["tokio-runtime"] }
 crossbeam-channel = "0.5"
 env_logger = "0.10"
 futures-util = "0.3"

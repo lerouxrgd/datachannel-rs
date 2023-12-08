@@ -259,7 +259,8 @@ async fn run_client(peer_id: Uuid, input: chan::Receiver<Uuid>, output: chan::Se
         let pc = RtcPeerConnection::new(&conf, conn).unwrap();
         conns.lock().unwrap().insert(dest_id, pc);
 
-        let (tx_ready, mut rx_ready) = chan::bounded(1);
+        let (tx_ready, rx_ready) = chan::bounded(1);
+        pin_mut!(rx_ready);
         let pipe = DataPipe::new_sender(output.clone(), tx_ready);
 
         let opts = DataChannelInit::default()
