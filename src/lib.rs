@@ -93,9 +93,9 @@ pub use crate::datachannel::{
 };
 pub use crate::error::{Error, Result};
 pub use crate::peerconnection::{
-    fmt_sdp, serde_sdp, CandidatePair, ConnectionState, GatheringState, IceCandidate,
+    fmt_sdp, serde_sdp, CandidatePair, ConnectionState, GatheringState, IceCandidate, IceState,
     PeerConnectionHandler, PeerConnectionId, RtcPeerConnection, SdpType, SessionDescription,
-    SignalingState, IceState,
+    SignalingState,
 };
 pub use crate::track::{Codec, Direction, RtcTrack, TrackHandler, TrackInit};
 
