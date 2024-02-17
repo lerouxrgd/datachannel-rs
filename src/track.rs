@@ -99,7 +99,7 @@ impl TrackInit {
                 .map(|s| s.as_ptr())
                 .unwrap_or(std::ptr::null()),
             profile: self
-                .track_id
+                .profile
                 .as_ref()
                 .map(|s| s.as_ptr())
                 .unwrap_or(std::ptr::null()),
