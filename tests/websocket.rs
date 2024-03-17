@@ -14,12 +14,6 @@ use log as logger;
 #[cfg(feature = "tracing")]
 use tracing as logger;
 
-// use async_std::future::timeout;
-// use async_std::net::{TcpListener, TcpStream};
-// use async_std::task::spawn;
-// use async_tungstenite::accept_hdr_async;
-// use async_tungstenite::async_std::connect_async;
-
 use async_tungstenite::tokio::{accept_hdr_async, connect_async};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::spawn;
