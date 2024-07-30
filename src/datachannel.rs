@@ -259,7 +259,7 @@ where
     /// buffer them.
     ///
     /// [`buffered_amount`]: RtcDataChannel::buffered_amount
-    /// [`on_bufferd_amount_low`]: RtcDataChannel::on_bufferd_amount_low
+    /// [`on_bufferd_amount_low`]: DataChannelHandler::on_buffered_amount_low
     pub fn set_buffered_amount_low_threshold(&mut self, amount: usize) -> Result<()> {
         let amount = i32::try_from(amount).map_err(|_| Error::InvalidArg)?;
         check(unsafe { sys::rtcSetBufferedAmountLowThreshold(self.id.0, amount) })?;

@@ -296,7 +296,7 @@ checksum = "e8566979429cf69b49a5c740c60791108e86440e8be149bbea4fe54d2c32d6e2"
 
 [[package]]
 name = "datachannel"
-version = "0.13.0"
+version = "0.13.1"
 dependencies = [
  "async-channel",
  "async-tungstenite",
@@ -318,7 +318,7 @@ dependencies = [
 
 [[package]]
 name = "datachannel-sys"
-version = "0.21.0"
+version = "0.21.2"
 dependencies = [
  "bindgen",
  "cmake",
