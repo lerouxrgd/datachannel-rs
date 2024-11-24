@@ -1,6 +1,6 @@
 [package]
 name = "datachannel-sys"
-version = "0.21.2"
+version = "0.22.2"
 authors = ["Romain Leroux <romain@leroux.dev>"]
 edition = "2021"
 links = "datachannel"
