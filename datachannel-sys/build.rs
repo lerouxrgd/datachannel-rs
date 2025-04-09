@@ -33,6 +33,9 @@ fn main() {
 
         let openssl_root_dir = openssl_artifacts().lib_dir().parent().unwrap();
         cmake_conf.define("OPENSSL_ROOT_DIR", openssl_root_dir.to_path_buf());
+        cmake_conf.define("OPENSSL_INCLUDE_DIR", openssl_root_dir.to_path_buf().join("include"));
+        cmake_conf.define("OPENSSL_CRYPTO_LIBRARY", openssl_root_dir.to_path_buf().join("lib/libcrypto.a"));
+        cmake_conf.define("OPENSSL_SSL_LIBRARY", openssl_root_dir.to_path_buf().join("lib/libssl.a"));
         cmake_conf.define("OPENSSL_USE_STATIC_LIBS", "TRUE");
 
         cmake_conf.build();
