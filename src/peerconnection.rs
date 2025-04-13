@@ -1,10 +1,9 @@
 use std::ffi::{c_void, CStr, CString};
-use std::fmt;
 use std::os::raw::c_char;
 use std::ptr;
 
 use datachannel_sys as sys;
-use derivative::Derivative;
+use derive_more::Debug;
 use parking_lot::ReentrantMutex;
 use serde::{Deserialize, Serialize};
 use webrtc_sdp::{media_type::SdpMedia, parse_sdp, SdpSession};
@@ -111,24 +110,21 @@ pub struct CandidatePair {
     pub remote: String,
 }
 
-#[derive(Derivative, Serialize, Deserialize)]
-#[derivative(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct SessionDescription {
-    #[derivative(Debug(format_with = "fmt_sdp"))]
+    #[debug("{}", fmt_sdp(sdp))]
     #[serde(with = "serde_sdp")]
     pub sdp: SdpSession,
     #[serde(rename = "type")]
     pub sdp_type: SdpType,
 }
 
-pub fn fmt_sdp(sdp: &SdpSession, f: &mut fmt::Formatter) -> std::result::Result<(), fmt::Error> {
-    let sdp = sdp
-        .to_string()
+pub fn fmt_sdp(sdp: &SdpSession) -> String {
+    sdp.to_string()
         .trim_end()
         .split("\r\n")
         .collect::<Vec<_>>()
-        .join("; ");
-    f.write_str(format!("{{ {} }}", sdp).as_str())
+        .join("; ")
 }
 
 pub mod serde_sdp {

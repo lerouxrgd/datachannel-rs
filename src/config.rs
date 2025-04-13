@@ -3,13 +3,12 @@ use std::os::raw::c_char;
 use std::ptr;
 
 use datachannel_sys as sys;
-use derivative::Derivative;
+use derive_more::Debug;
 
-#[derive(Derivative)]
-#[derivative(Debug)]
+#[derive(Debug)]
 pub struct RtcConfig {
     pub ice_servers: Vec<CString>,
-    #[derivative(Debug = "ignore")]
+    #[debug(skip)]
     ice_servers_ptrs: Vec<*const c_char>,
     pub proxy_server: Option<CString>,
     pub bind_address: Option<CString>,
