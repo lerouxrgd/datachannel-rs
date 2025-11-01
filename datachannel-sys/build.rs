@@ -2,7 +2,9 @@ use std::env;
 use std::path::PathBuf;
 
 #[cfg(all(feature = "vendored", feature = "vendored-libdatachannel"))]
-compile_error!("Features: 'vendored' and 'vendored-libdatachannel' cannot be enabled at the same time!");
+compile_error!(
+    "Features: 'vendored' and 'vendored-libdatachannel' cannot be enabled at the same time!"
+);
 
 #[cfg(feature = "vendored")]
 use once_cell::sync::OnceCell;
