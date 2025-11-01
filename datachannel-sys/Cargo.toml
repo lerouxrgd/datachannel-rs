@@ -24,4 +24,5 @@ openssl-src = { version = "300", optional = true }
 
 [features]
 vendored = ["dep:openssl-src", "dep:cpp_build", "dep:once_cell"]
+vendored-libdatachannel = ["dep:cpp_build"]
 media = []
