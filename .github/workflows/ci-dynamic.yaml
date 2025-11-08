@@ -36,6 +36,7 @@ jobs:
       - if: matrix.os == 'windows-latest'
         run: |
           choco install openssl --version 3.1.1
+          echo "CARGO_ENCODED_RUSTFLAGS=-Lnative=C:\Program Files\OpenSSL\lib" >> $env:GITHUB_ENV
 
       - run: rustup update
       - run: cargo build --features ${{ matrix.feature }}

@@ -110,11 +110,14 @@ fn main() {
         cmake_conf.build();
 
         // Link dynamic openssl
-        println!("cargo:rustc-link-search=native={}/lib", out_dir);
-        println!("cargo:rustc-link-lib=dylib=ssl");
 
-        println!("cargo:rustc-link-search=native={}/lib", out_dir);
-        println!("cargo:rustc-link-lib=dylib=crypto");
+        if cfg!(target_env = "msvc") {
+            println!("cargo:rustc-link-lib=dylib=libssl");
+            println!("cargo:rustc-link-lib=dylib=libcrypto");
+        } else {
+            println!("cargo:rustc-link-lib=dylib=ssl");
+            println!("cargo:rustc-link-lib=dylib=crypto");
+        }
 
         let profile = cmake_conf.get_profile();
 
