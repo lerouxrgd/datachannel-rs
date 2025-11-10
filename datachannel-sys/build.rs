@@ -1,6 +1,11 @@
 use std::env;
 use std::path::PathBuf;
 
+#[cfg(all(feature = "vendored", feature = "vendored-libdatachannel"))]
+compile_error!(
+    "Features: 'vendored' and 'vendored-libdatachannel' cannot be enabled at the same time!"
+);
+
 #[cfg(feature = "vendored")]
 use once_cell::sync::OnceCell;
 
@@ -16,8 +21,108 @@ pub fn openssl_artifacts() -> &'static openssl_src::Artifacts {
     INSTANCE.get_or_init(|| openssl_src::Build::new().build())
 }
 
+#[cfg(any(feature = "vendored", feature = "vendored-libdatachannel"))]
+fn link_static_libdatachannel(out_dir: &str, profile: &str) {
+    // Link static libc++
+    cpp_build::Config::new()
+        .include(format!("{}/lib", out_dir))
+        .build("src/lib.rs");
+
+    // Link static libjuice
+    if cfg!(target_env = "msvc") {
+        println!(
+            "cargo:rustc-link-search=native={}/build/deps/libjuice/{}",
+            out_dir, profile
+        );
+    } else {
+        println!(
+            "cargo:rustc-link-search=native={}/build/deps/libjuice",
+            out_dir
+        );
+    }
+    println!("cargo:rustc-link-lib=static=juice-static");
+
+    // Link static usrsctplib
+    if cfg!(target_env = "msvc") {
+        println!(
+            "cargo:rustc-link-search=native={}/build/deps/usrsctp/usrsctplib/{}",
+            out_dir, profile
+        );
+    } else {
+        println!(
+            "cargo:rustc-link-search=native={}/build/deps/usrsctp/usrsctplib",
+            out_dir
+        );
+    }
+    println!("cargo:rustc-link-lib=static=usrsctp");
+
+    if cfg!(feature = "media") {
+        // Link static libsrtp
+        if cfg!(target_env = "msvc") {
+            println!(
+                "cargo:rustc-link-search=native={}/build/deps/libsrtp/{}",
+                out_dir, profile
+            );
+        } else {
+            println!(
+                "cargo:rustc-link-search=native={}/build/deps/libsrtp",
+                out_dir
+            );
+        }
+        println!("cargo:rustc-link-lib=static=srtp2");
+    }
+
+    // Link static libdatachannel
+    if cfg!(target_env = "msvc") {
+        println!(
+            "cargo:rustc-link-search=native={}/build/{}",
+            out_dir, profile
+        );
+    } else {
+        println!("cargo:rustc-link-search=native={}/build", out_dir);
+    }
+    println!("cargo:rustc-link-lib=static=datachannel-static");
+}
+
 fn main() {
     let out_dir = env::var("OUT_DIR").unwrap();
+
+    #[cfg(feature = "vendored-libdatachannel")]
+    {
+        let mut cmake_conf = cmake::Config::new("libdatachannel");
+        cmake_conf.build_target("datachannel-static");
+        cmake_conf.out_dir(&out_dir);
+
+        cmake_conf.define("CMAKE_POLICY_VERSION_MINIMUM", "3.5");
+        cmake_conf.define("NO_WEBSOCKET", "ON");
+        cmake_conf.define("NO_EXAMPLES", "ON");
+        if !cfg!(feature = "media") {
+            cmake_conf.define("NO_MEDIA", "ON");
+        }
+
+        if let Ok(openssl_root_dir) = env_var_rerun("OPENSSL_ROOT_DIR") {
+            cmake_conf.define("OPENSSL_ROOT_DIR", openssl_root_dir);
+        }
+        if let Ok(openssl_libraries) = env_var_rerun("OPENSSL_LIBRARIES") {
+            cmake_conf.define("OPENSSL_LIBRARIES", openssl_libraries);
+        }
+
+        cmake_conf.build();
+
+        // Link dynamic openssl
+
+        if cfg!(target_env = "msvc") {
+            println!("cargo:rustc-link-lib=dylib=libssl");
+            println!("cargo:rustc-link-lib=dylib=libcrypto");
+        } else {
+            println!("cargo:rustc-link-lib=dylib=ssl");
+            println!("cargo:rustc-link-lib=dylib=crypto");
+        }
+
+        let profile = cmake_conf.get_profile();
+
+        link_static_libdatachannel(&out_dir, profile);
+    }
 
     #[cfg(feature = "vendored")]
     {
@@ -52,11 +157,6 @@ fn main() {
 
         let profile = cmake_conf.get_profile();
 
-        // Link static libc++
-        cpp_build::Config::new()
-            .include(format!("{}/lib", out_dir))
-            .build("src/lib.rs");
-
         // Link static openssl
         println!(
             "cargo:rustc-link-search=native={}",
@@ -70,63 +170,10 @@ fn main() {
             println!("cargo:rustc-link-lib=static=ssl");
         }
 
-        // Link static libjuice
-        if cfg!(target_env = "msvc") {
-            println!(
-                "cargo:rustc-link-search=native={}/build/deps/libjuice/{}",
-                out_dir, profile
-            );
-        } else {
-            println!(
-                "cargo:rustc-link-search=native={}/build/deps/libjuice",
-                out_dir
-            );
-        }
-        println!("cargo:rustc-link-lib=static=juice-static");
-
-        // Link static usrsctplib
-        if cfg!(target_env = "msvc") {
-            println!(
-                "cargo:rustc-link-search=native={}/build/deps/usrsctp/usrsctplib/{}",
-                out_dir, profile
-            );
-        } else {
-            println!(
-                "cargo:rustc-link-search=native={}/build/deps/usrsctp/usrsctplib",
-                out_dir
-            );
-        }
-        println!("cargo:rustc-link-lib=static=usrsctp");
-
-        if cfg!(feature = "media") {
-            // Link static libsrtp
-            if cfg!(target_env = "msvc") {
-                println!(
-                    "cargo:rustc-link-search=native={}/build/deps/libsrtp/{}",
-                    out_dir, profile
-                );
-            } else {
-                println!(
-                    "cargo:rustc-link-search=native={}/build/deps/libsrtp",
-                    out_dir
-                );
-            }
-            println!("cargo:rustc-link-lib=static=srtp2");
-        }
-
-        // Link static libdatachannel
-        if cfg!(target_env = "msvc") {
-            println!(
-                "cargo:rustc-link-search=native={}/build/{}",
-                out_dir, profile
-            );
-        } else {
-            println!("cargo:rustc-link-search=native={}/build", out_dir);
-        }
-        println!("cargo:rustc-link-lib=static=datachannel-static");
+        link_static_libdatachannel(&out_dir, profile);
     }
 
-    #[cfg(not(feature = "vendored"))]
+    #[cfg(not(any(feature = "vendored", feature = "vendored-libdatachannel")))]
     {
         let mut cmake_conf = cmake::Config::new("libdatachannel");
         cmake_conf.out_dir(&out_dir);
