@@ -173,7 +173,7 @@ fn main() {
         link_static_libdatachannel(&out_dir, profile);
     }
 
-    #[cfg(not(feature = "vendored"))]
+    #[cfg(not(any(feature = "vendored", feature = "vendored-libdatachannel")))]
     {
         let mut cmake_conf = cmake::Config::new("libdatachannel");
         cmake_conf.out_dir(&out_dir);
