@@ -82,6 +82,14 @@ fn link_static_libdatachannel(out_dir: &str, profile: &str) {
         println!("cargo:rustc-link-search=native={}/build", out_dir);
     }
     println!("cargo:rustc-link-lib=static=datachannel-static");
+
+    // Static .lib archives on Windows don't record transitive link dependencies,
+    // so we must list the Win32 system DLLs needed by libjuice/usrsctp here.
+    if cfg!(target_env = "msvc") {
+        println!("cargo:rustc-link-lib=dylib=bcrypt"); // libjuice: BCryptGenRandom
+        println!("cargo:rustc-link-lib=dylib=ws2_32"); // winsock2 (juice, usrsctp, datachannel)
+        println!("cargo:rustc-link-lib=dylib=iphlpapi"); // usrsctp
+    }
 }
 
 fn main() {
