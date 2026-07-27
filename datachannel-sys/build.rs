@@ -173,6 +173,10 @@ fn main() {
         if cfg!(target_env = "msvc") {
             println!("cargo:rustc-link-lib=static=libcrypto");
             println!("cargo:rustc-link-lib=static=libssl");
+            // Static OpenSSL on Windows requires these Win32 import libs at final link.
+            println!("cargo:rustc-link-lib=dylib=advapi32"); // event log + legacy CryptoAPI
+            println!("cargo:rustc-link-lib=dylib=user32"); // window station / MessageBox
+            println!("cargo:rustc-link-lib=dylib=crypt32"); // cert store APIs
         } else {
             println!("cargo:rustc-link-lib=static=crypto");
             println!("cargo:rustc-link-lib=static=ssl");
