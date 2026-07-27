@@ -18,9 +18,16 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
         feature: ["vendored", "vendored,media"]
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v5
         with:
           submodules: recursive
+
+      # Activate MSVC environment so cmake-rs can locate the Visual Studio generator
+      - if: matrix.os == 'windows-latest'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
       - run: rustup update
       - run: cargo build --features ${{ matrix.feature }}
       - run: cargo fmt --check --all
