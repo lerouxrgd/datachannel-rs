@@ -187,6 +187,8 @@ where
         let rtc_dc = &mut *(ptr as *mut RtcDataChannel<D>);
         let msg = if size < 0 {
             CStr::from_ptr(msg).to_bytes()
+        } else if size == 0 {
+            &[]
         } else {
             slice::from_raw_parts(msg as *const u8, size as usize)
         };
